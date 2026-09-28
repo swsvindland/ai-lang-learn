@@ -9,8 +9,14 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.swsvindland.hablo",
-      "supportsTablet": true
+      "bundleIdentifier": "dev.svindland.hablo",
+      "appleTeamId": "9HAG9PT8LJ",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "Hablo transcribes your speech on-device to check your Spanish pronunciation.",
+        "NSMicrophoneUsageDescription": "Hablo uses the microphone so you can practice speaking Spanish.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -20,7 +26,13 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.swsvindland.hablo"
+      "package": "dev.svindland.hablo",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ]
     },
     "web": {
       "output": "static",
@@ -76,6 +88,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "0543a0a7-6d8f-4ffa-acba-181aac5f82cc"
+      }
     }
   }
 }
