@@ -1,0 +1,23 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.ondevicellm'
+version = '0.1.0'
+
+android {
+  namespace "expo.modules.ondevicellm"
+  defaultConfig {
+    minSdkVersion 26
+    versionCode 1
+    versionName "0.1.0"
+  }
+}
+
+dependencies {
+  // beta2: later betas ship Kotlin 2.3 metadata, which React Native's Kotlin 2.1 toolchain can't read.
+  implementation "com.google.mlkit:genai-prompt:1.0.0-beta2"
+  implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2"
+}
+

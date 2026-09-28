@@ -1,14 +1,16 @@
 {
   "expo": {
-    "name": "ai-lang-learn",
+    "name": "Hablo",
     "slug": "ai-lang-learn",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "ailanglearn",
+    "scheme": "hablo",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.swsvindland.hablo",
+      "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
@@ -17,7 +19,8 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.swsvindland.hablo"
     },
     "web": {
       "output": "static",
@@ -32,7 +35,43 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
-      ]
+      ],
+      "expo-sqlite",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Hablo uses the microphone so you can practice speaking Spanish.",
+          "speechRecognitionPermission": "Hablo transcribes your speech on-device to check your Spanish pronunciation.",
+          "androidSpeechServicePackages": [
+            "com.google.android.as",
+            "com.google.android.googlequicksearchbox"
+          ]
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Hablo uses the microphone so you can practice speaking Spanish."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#E4572E"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          },
+          "ios": {
+            "enableSceneSupport": true
+          }
+        }
+      ],
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true,
