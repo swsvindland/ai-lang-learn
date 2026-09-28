@@ -10,7 +10,10 @@
     "ios": {
       "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.swsvindland.hablo",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Hablo only accesses your photo library if you choose to save or select an image."
+      }
     },
     "android": {
       "adaptiveIcon": {
