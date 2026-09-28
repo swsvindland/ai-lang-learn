@@ -15,6 +15,7 @@
       "infoPlist": {
         "NSSpeechRecognitionUsageDescription": "Hablo transcribes your speech on-device to check your Spanish pronunciation.",
         "NSMicrophoneUsageDescription": "Hablo uses the microphone so you can practice speaking Spanish.",
+        "NSPhotoLibraryUsageDescription": "Hablo only accesses your photo library if you choose to save or select an image.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
