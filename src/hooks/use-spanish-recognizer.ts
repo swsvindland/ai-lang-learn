@@ -59,7 +59,7 @@ export function useSpanishRecognizer({
     setRecordingUri(null);
     latest.current = '';
     delivered.current = false;
-    stopSpeaking();
+    await stopSpeaking();
     const perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
     if (!perm.granted) {
       setError('Microphone and speech recognition permission are needed for speaking practice.');
