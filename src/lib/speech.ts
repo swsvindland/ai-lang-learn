@@ -32,26 +32,46 @@ function loadVoice() {
 
 export type SpeakOptions = { slow?: boolean; onDone?: () => void };
 
-export async function speakSpanish(text: string, { slow = false, onDone }: SpeakOptions = {}) {
-  await loadVoice();
-  Speech.stop();
-  Speech.speak(text, {
-    language: voiceLanguage,
-    voice: voiceId,
-    rate: slow ? 0.7 : 0.95,
-    onDone,
-    onStopped: onDone,
-    onError: () => onDone?.(),
+// Speech calls run one at a time so a stop can never land after the speak it was meant to precede.
+let queue: Promise<void> = Promise.resolve();
+
+function enqueue(task: () => Promise<void>) {
+  queue = queue.then(task).catch(() => undefined);
+  return queue;
+}
+
+/**
+ * iOS's synthesizer can lock up after `stop`, silently dropping every later
+ * utterance with no callbacks. Only interrupt when something is actually playing.
+ */
+async function stopIfSpeaking() {
+  if (await Speech.isSpeakingAsync()) await Speech.stop();
+}
+
+export function speakSpanish(text: string, { slow = false, onDone }: SpeakOptions = {}) {
+  return enqueue(async () => {
+    await loadVoice();
+    await stopIfSpeaking();
+    Speech.speak(text, {
+      language: voiceLanguage,
+      voice: voiceId,
+      rate: slow ? 0.7 : 0.95,
+      onDone,
+      onStopped: onDone,
+      onError: () => onDone?.(),
+    });
   });
 }
 
 export function speakEnglish(text: string) {
-  Speech.stop();
-  Speech.speak(text, { language: 'en-US' });
+  return enqueue(async () => {
+    await stopIfSpeaking();
+    Speech.speak(text, { language: 'en-US' });
+  });
 }
 
 export function stopSpeaking() {
-  Speech.stop();
+  return enqueue(stopIfSpeaking);
 }
 
 export async function spanishVoiceInfo() {
