@@ -6,6 +6,7 @@ import { AudioButton } from '@/components/ui/controls';
 import { Icons } from '@/components/ui/icon';
 import { Input } from '@/components/ui/input';
 import { Card, Pill } from '@/components/ui/layout';
+import { TargetText } from '@/components/ui/target-text';
 import { Text } from '@/components/ui/text';
 import { Spacing } from '@/constants/theme';
 import { explainGrammar, type GrammarAnswer } from '@/lib/ai/tutor';
@@ -43,12 +44,12 @@ export function GrammarActivity({ activity, onDone, level, aiReady }: ActivityPr
       <Text variant="body">{grammar.summary}</Text>
       <View style={styles.examples}>
         {grammar.examples.map((ex) => (
-          <Card key={ex.es} style={styles.example}>
+          <Card key={ex.text} style={styles.example}>
             <View style={styles.exampleText}>
-              <Text variant="bodyStrong">{ex.es}</Text>
+              <TargetText text={ex.text} reading={ex.reading} variant="bodyStrong" />
               <Text variant="caption">{ex.en}</Text>
             </View>
-            <AudioButton text={ex.es} size={40} showSlow={false} />
+            <AudioButton text={ex.text} size={40} showSlow={false} />
           </Card>
         ))}
       </View>
@@ -68,12 +69,12 @@ export function GrammarActivity({ activity, onDone, level, aiReady }: ActivityPr
             <View style={styles.answer}>
               <Text variant="body">{answer.answer}</Text>
               {answer.examples.map((ex) => (
-                <View key={ex.es} style={styles.answerExample}>
+                <View key={ex.text} style={styles.answerExample}>
                   <View style={styles.exampleText}>
-                    <Text variant="bodyStrong">{ex.es}</Text>
+                    <TargetText text={ex.text} reading={ex.reading} variant="bodyStrong" />
                     <Text variant="caption">{ex.en}</Text>
                   </View>
-                  <AudioButton text={ex.es} size={34} showSlow={false} />
+                  <AudioButton text={ex.text} size={34} showSlow={false} />
                 </View>
               ))}
               <Text variant="caption" color="textTertiary">

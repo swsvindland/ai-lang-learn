@@ -12,6 +12,7 @@ import { useAiStatus } from '@/hooks/use-ai-status';
 import { useDbQuery } from '@/hooks/use-db-query';
 import { completeHomework, getHomework, MEDIA_TYPE_LABEL, mediaFor, skipHomework } from '@/lib/homework';
 import { overallLevel } from '@/lib/learner';
+import { language } from '@/lib/languages';
 
 const MINUTE_OPTIONS = [15, 30, 45, 60, 90];
 
@@ -65,14 +66,14 @@ export default function HomeworkDetail() {
                 ))}
               </Row>
             </Section>
-            <Section title="Reflection (en español, if you can)">
+            <Section title={`Reflection (in ${language().name}, if you can)`}>
               <Input
                 large
                 multiline
                 value={reflection}
                 onChangeText={setReflection}
                 autoCapitalize="sentences"
-                placeholder="¿Qué viste o leíste? ¿Qué palabras nuevas aprendiste?"
+                placeholder={language().phrases.reflectionPrompt}
               />
               <Text variant="caption">
                 {ai?.status === 'available'

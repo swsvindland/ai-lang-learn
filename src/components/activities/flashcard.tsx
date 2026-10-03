@@ -5,11 +5,13 @@ import { Button } from '@/components/ui/button';
 import { AudioButton } from '@/components/ui/controls';
 import { Icons } from '@/components/ui/icon';
 import { Card, Pill } from '@/components/ui/layout';
+import { TargetText } from '@/components/ui/target-text';
 import { Text } from '@/components/ui/text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { vocabLabel } from '@/lib/cards';
-import { speakSpanish } from '@/lib/speech';
+import { language } from '@/lib/languages';
+import { speak } from '@/lib/speech';
 import type { Grade } from '@/lib/srs';
 
 import { ActivityShell, type ActivityProps } from './shell';
@@ -26,22 +28,32 @@ const SCORE: Record<Grade, number> = { 1: 0, 2: 0.6, 3: 0.9, 4: 1 };
 export function FlashcardActivity({ activity, onDone }: ActivityProps<'flashcard'>) {
   const theme = useTheme();
   const { vocab, card } = activity;
+  // Card directions are stored as 'es_en' (recognize) / 'en_es' (produce) for every language.
   const recognition = card.direction === 'es_en';
+  const character = vocab.pos === 'character';
   const [revealed, setRevealed] = useState(false);
-  const spanish = vocabLabel(vocab);
+  const label = vocabLabel(vocab);
 
   useEffect(() => {
-    if (recognition) speakSpanish(spanish);
-  }, [recognition, spanish]);
+    if (recognition) speak(label);
+  }, [recognition, label]);
 
   function reveal() {
     setRevealed(true);
-    if (!recognition) speakSpanish(spanish);
+    if (!recognition) speak(label);
   }
+
+  const kicker = character
+    ? recognition
+      ? 'Flashcard · How is it read?'
+      : 'Flashcard · Picture the character'
+    : recognition
+      ? 'Flashcard · What does it mean?'
+      : `Flashcard · Say it in ${language().name}`;
 
   return (
     <ActivityShell
-      kicker={recognition ? 'Flashcard · What does it mean?' : 'Flashcard · Say it in Spanish'}
+      kicker={kicker}
       icon={Icons.cards}
       footer={
         revealed ? (
@@ -56,8 +68,8 @@ export function FlashcardActivity({ activity, onDone }: ActivityProps<'flashcard
                       skill: 'vocab',
                       score: SCORE[g.grade],
                       ref: vocab.id,
-                      prompt: recognition ? spanish : vocab.en,
-                      expected: recognition ? vocab.en : spanish,
+                      prompt: recognition ? label : vocab.en,
+                      expected: recognition ? vocab.en : label,
                     },
                     g.grade
                   )
@@ -80,15 +92,27 @@ export function FlashcardActivity({ activity, onDone }: ActivityProps<'flashcard
         {card.state === 'new' ? <Pill label="New" tone="primary" /> : null}
         {recognition ? (
           <>
-            <Text variant="spanish" center>
-              {spanish}
-            </Text>
-            <AudioButton text={spanish} size={48} />
+            <TargetText
+              text={label}
+              reading={vocab.reading}
+              center
+              style={character ? styles.big : undefined}
+              aids={!character || revealed}
+            />
+            <AudioButton text={label} size={48} />
           </>
         ) : (
-          <Text variant="title" center>
-            {vocab.en}
-          </Text>
+          <>
+            <Text variant="title" center>
+              {vocab.en}
+            </Text>
+            {character ? (
+              // Romaji alone is ambiguous (ka → か or カ), so name the script and give the example's meaning.
+              <Text variant="caption" center>
+                {/[\u30A0-\u30FF]/.test(vocab.text) ? 'katakana' : 'hiragana'} · as in “{vocab.example.en}”
+              </Text>
+            ) : null}
+          </>
         )}
         {revealed ? (
           <View style={[styles.answer, { borderTopColor: theme.border }]}>
@@ -98,15 +122,17 @@ export function FlashcardActivity({ activity, onDone }: ActivityProps<'flashcard
               </Text>
             ) : (
               <>
-                <Text variant="spanish" center color="primary">
-                  {spanish}
-                </Text>
-                <AudioButton text={spanish} size={44} />
+                <TargetText text={label} reading={vocab.reading} center color="primary" style={character ? styles.big : undefined} />
+                <AudioButton text={label} size={44} />
               </>
             )}
-            <Text variant="body" center color="textSecondary">
-              {vocab.example.es}
-            </Text>
+            <TargetText
+              text={vocab.example.text}
+              reading={vocab.example.reading}
+              variant="body"
+              color="textSecondary"
+              center
+            />
             <Text variant="caption" center>
               {vocab.example.en}
             </Text>
@@ -119,15 +145,16 @@ export function FlashcardActivity({ activity, onDone }: ActivityProps<'flashcard
 
 export function IntroduceActivity({ activity, onDone }: ActivityProps<'introduce'>) {
   const { vocab } = activity;
-  const spanish = vocabLabel(vocab);
+  const label = vocabLabel(vocab);
+  const character = vocab.pos === 'character';
 
   useEffect(() => {
-    speakSpanish(spanish);
-  }, [spanish]);
+    speak(label);
+  }, [label]);
 
   return (
     <ActivityShell
-      kicker="New word"
+      kicker={character ? 'New character' : 'New word'}
       icon={Icons.sparkles}
       footer={
         <Button
@@ -138,19 +165,17 @@ export function IntroduceActivity({ activity, onDone }: ActivityProps<'introduce
       }>
       <Card style={styles.card}>
         <Pill label={vocab.pos} tone="accent" />
-        <Text variant="spanish" center style={styles.big}>
-          {spanish}
-        </Text>
+        <TargetText text={label} reading={vocab.reading} center style={styles.big} aids={!character} />
         <Text variant="title" center color="textSecondary">
           {vocab.en}
         </Text>
-        <AudioButton text={spanish} />
+        <AudioButton text={label} />
       </Card>
       <Card tone="surfaceAlt">
         <Text variant="label">Example</Text>
-        <Text variant="bodyStrong">{vocab.example.es}</Text>
+        <TargetText text={vocab.example.text} reading={vocab.example.reading} variant="bodyStrong" />
         <Text variant="caption">{vocab.example.en}</Text>
-        <AudioButton text={vocab.example.es} size={40} />
+        <AudioButton text={vocab.example.text} size={40} />
       </Card>
     </ActivityShell>
   );

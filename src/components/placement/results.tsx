@@ -5,6 +5,7 @@ import { Card, Pill, ProgressBar, Row, Section } from '@/components/ui/layout';
 import { Text } from '@/components/ui/text';
 import { Spacing } from '@/constants/theme';
 import { ratingToCefr } from '@/lib/curriculum';
+import { language, levelLabel } from '@/lib/languages';
 import type { PlacementPlan, PlacementResult } from '@/lib/placement';
 
 export function PlacementResults({
@@ -26,7 +27,7 @@ export function PlacementResults({
 
   return (
     <View style={styles.container}>
-      <Text variant="label">Your Spanish today</Text>
+      <Text variant="label">Your {language().name} today</Text>
       <Text variant="title">{plan.headline}</Text>
 
       <Card>
@@ -34,7 +35,7 @@ export function PlacementResults({
           <View key={b.label} style={styles.bar}>
             <Row style={styles.between}>
               <Text variant="bodyStrong">{b.label}</Text>
-              <Text variant="caption">{b.rating < 5 ? 'Just starting' : ratingToCefr(b.rating)}</Text>
+              <Text variant="caption">{b.rating < 5 ? 'Just starting' : levelLabel(ratingToCefr(b.rating))}</Text>
             </Row>
             {/* Scale to B2 so early progress is visible. */}
             <ProgressBar value={b.rating / 400} height={8} />
@@ -50,7 +51,7 @@ export function PlacementResults({
       <Section title="Your plan">
         <Card tone="primarySoft">
           <Row>
-            <Pill label={`Unit ${plan.startUnit.order} · ${plan.startUnit.cefr}`} tone="primary" />
+            <Pill label={`Unit ${plan.startUnit.order} · ${levelLabel(plan.startUnit.cefr)}`} tone="primary" />
           </Row>
           <Text variant="heading">{plan.startUnit.title}</Text>
           <Text variant="body">{plan.explanation}</Text>

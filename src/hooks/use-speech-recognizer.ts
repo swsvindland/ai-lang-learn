@@ -5,15 +5,16 @@ import {
 import { useRef, useState } from 'react';
 import { Platform } from 'react-native';
 
+import { language } from '@/lib/languages';
 import { stopSpeaking } from '@/lib/speech';
 
 export type RecognizerState = 'idle' | 'listening' | 'processing';
 
 /**
- * Wraps on-device speech recognition for Spanish. Keeps the recorded audio so
- * learners can hear themselves back next to the native model.
+ * Wraps on-device speech recognition for the language being learned. Keeps the
+ * recorded audio so learners can hear themselves back next to the native model.
  */
-export function useSpanishRecognizer({
+export function useSpeechRecognizer({
   contextualStrings,
   onFinal,
 }: {
@@ -68,7 +69,7 @@ export function useSpanishRecognizer({
     const onDevice = ExpoSpeechRecognitionModule.supportsOnDeviceRecognition();
     setState('listening');
     ExpoSpeechRecognitionModule.start({
-      lang: 'es-MX',
+      lang: language().speech.recognitionLocale,
       interimResults: true,
       continuous: false,
       // Keep audio local whenever the platform allows it.

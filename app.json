@@ -13,8 +13,8 @@
       "appleTeamId": "9HAG9PT8LJ",
       "supportsTablet": true,
       "infoPlist": {
-        "NSSpeechRecognitionUsageDescription": "Hablo transcribes your speech on-device to check your Spanish pronunciation.",
-        "NSMicrophoneUsageDescription": "Hablo uses the microphone so you can practice speaking Spanish.",
+        "NSSpeechRecognitionUsageDescription": "Hablo transcribes your speech on-device to check your pronunciation.",
+        "NSMicrophoneUsageDescription": "Hablo uses the microphone so you can practice speaking.",
         "NSPhotoLibraryUsageDescription": "Hablo only accesses your photo library if you choose to save or select an image.",
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -53,8 +53,8 @@
       [
         "expo-speech-recognition",
         {
-          "microphonePermission": "Hablo uses the microphone so you can practice speaking Spanish.",
-          "speechRecognitionPermission": "Hablo transcribes your speech on-device to check your Spanish pronunciation.",
+          "microphonePermission": "Hablo uses the microphone so you can practice speaking.",
+          "speechRecognitionPermission": "Hablo transcribes your speech on-device to check your pronunciation.",
           "androidSpeechServicePackages": [
             "com.google.android.as",
             "com.google.android.googlequicksearchbox"
@@ -64,7 +64,7 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Hablo uses the microphone so you can practice speaking Spanish."
+          "microphonePermission": "Hablo uses the microphone so you can practice speaking."
         }
       ],
       [
@@ -84,7 +84,8 @@
           }
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,

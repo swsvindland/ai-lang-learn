@@ -5,19 +5,19 @@ import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { getProfile } from '@/lib/learner';
-import { speakSpanish } from '@/lib/speech';
+import { speak } from '@/lib/speech';
 
 import { Icon, Icons } from './icon';
 import { Text } from './text';
 
-/** Round play button that speaks Spanish text, with an optional slow variant. */
+/** Round play button that speaks text in the language being learned, with an optional slow variant. */
 export function AudioButton({ text, size = 56, showSlow = true }: { text: string; size?: number; showSlow?: boolean }) {
   const theme = useTheme();
   const [playing, setPlaying] = useState<'normal' | 'slow' | null>(null);
 
   function play(slow: boolean) {
     setPlaying(slow ? 'slow' : 'normal');
-    speakSpanish(text, { slow: slow || !!getProfile()?.slowAudio, onDone: () => setPlaying(null) });
+    speak(text, { slow: slow || !!getProfile()?.slowAudio, onDone: () => setPlaying(null) });
   }
 
   return (

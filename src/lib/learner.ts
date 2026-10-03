@@ -1,14 +1,15 @@
 import {
   CEFR_LEVELS,
+  courseUnits,
   getGrammar,
   getUnit,
   nextUnit,
   ratingToCefr,
-  units,
   type Cefr,
   type Unit,
 } from '@/lib/curriculum';
-import { all, first, run, transaction } from '@/lib/db';
+import { all, courseHasProfile, first, firstIn, hasActiveCourse, run, transaction } from '@/lib/db';
+import { LANGUAGE_CODES, type LanguageCode } from '@/lib/languages';
 import type { Background, PlacementPlan } from '@/lib/placement';
 import { isLearned } from '@/lib/srs';
 
@@ -65,8 +66,12 @@ export type Profile = {
   remindersEnabled: boolean;
   interests: Interest[];
   slowAudio: boolean;
-  /** Prior Spanish experience from onboarding; used for pacing and AI context. */
+  /** Prior experience with the language from onboarding; used for pacing and AI context. */
   background: Background | null;
+  /** Furigana over kanji (languages with readings). */
+  showReadings: boolean;
+  /** Romaji under Japanese text, for learners still getting comfortable with kana. */
+  showRomaji: boolean;
   createdAt: number;
 };
 
@@ -82,12 +87,12 @@ type ProfileRow = {
   interests: string;
   slow_audio: number;
   background: Background | null;
+  show_readings: number;
+  show_romaji: number;
   created_at: number;
 };
 
-export function getProfile(): Profile | null {
-  const row = first<ProfileRow>('SELECT * FROM profile WHERE id = 1');
-  if (!row) return null;
+function toProfile(row: ProfileRow): Profile {
   return {
     name: row.name,
     startLevel: row.start_level,
@@ -100,20 +105,36 @@ export function getProfile(): Profile | null {
     interests: JSON.parse(row.interests),
     slowAudio: !!row.slow_audio,
     background: row.background,
+    showReadings: !!row.show_readings,
+    showRomaji: !!row.show_romaji,
     createdAt: row.created_at,
   };
+}
+
+export function getProfile(): Profile | null {
+  if (!hasActiveCourse()) return null;
+  const row = first<ProfileRow>('SELECT * FROM profile WHERE id = 1');
+  return row ? toProfile(row) : null;
+}
+
+/** Another course's profile, e.g. to pre-fill setup when starting a second language. */
+export function profileOf(code: LanguageCode): Profile | null {
+  const row = firstIn<ProfileRow>(code, 'SELECT * FROM profile WHERE id = 1');
+  return row ? toProfile(row) : null;
 }
 
 export function saveProfile(p: Profile) {
   run(
     `INSERT INTO profile (id, name, start_level, sessions_per_week, session_minutes, reminder_days,
-       reminder_hour, reminder_minute, reminders_enabled, interests, slow_audio, background, created_at)
-     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       reminder_hour, reminder_minute, reminders_enabled, interests, slow_audio, background, show_readings,
+       show_romaji, created_at)
+     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET name = excluded.name, start_level = excluded.start_level,
        sessions_per_week = excluded.sessions_per_week, session_minutes = excluded.session_minutes,
        reminder_days = excluded.reminder_days, reminder_hour = excluded.reminder_hour,
        reminder_minute = excluded.reminder_minute, reminders_enabled = excluded.reminders_enabled,
-       interests = excluded.interests, slow_audio = excluded.slow_audio, background = excluded.background`,
+       interests = excluded.interests, slow_audio = excluded.slow_audio, background = excluded.background,
+       show_readings = excluded.show_readings, show_romaji = excluded.show_romaji`,
     [
       p.name,
       p.startLevel,
@@ -126,6 +147,8 @@ export function saveProfile(p: Profile) {
       JSON.stringify(p.interests),
       p.slowAudio ? 1 : 0,
       p.background,
+      p.showReadings ? 1 : 0,
+      p.showRomaji ? 1 : 0,
       p.createdAt,
     ]
   );
@@ -144,6 +167,7 @@ export function updateProfile(patch: Partial<Profile>) {
  */
 export function initLearner(profile: Profile, plan?: PlacementPlan) {
   const now = Date.now();
+  const units = courseUnits();
   const start = plan?.startUnit ?? units[0];
   transaction(() => {
     saveProfile({ ...profile, startLevel: start.cefr });
@@ -177,6 +201,15 @@ export function initLearner(profile: Profile, plan?: PlacementPlan) {
         );
       }
     }
+  });
+}
+
+/** Every language the app teaches, with whether it's been started and the level reached. */
+export function courseSummaries(): { code: LanguageCode; started: boolean; level: Cefr }[] {
+  return LANGUAGE_CODES.map((code) => {
+    const started = courseHasProfile(code);
+    const rating = started ? (firstIn<{ r: number | null }>(code, 'SELECT AVG(rating) AS r FROM skills')?.r ?? 0) : 0;
+    return { code, started, level: ratingToCefr(rating) };
   });
 }
 
@@ -334,6 +367,7 @@ export function currentUnit(): Unit {
   const unit = row ? getUnit(row.unit_id) : undefined;
   if (unit) return unit;
   // Everything finished (or state missing): keep practising the last unit.
+  const units = courseUnits();
   return units[units.length - 1];
 }
 

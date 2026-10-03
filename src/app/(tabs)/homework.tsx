@@ -19,6 +19,7 @@ import {
   type Homework,
 } from '@/lib/homework';
 import { currentUnit, getProfile, overallLevel } from '@/lib/learner';
+import { language, levelLabel } from '@/lib/languages';
 
 const MEDIA_ICONS: Record<MediaType, IconName> = {
   tv: Icons.tv,
@@ -66,8 +67,8 @@ export default function HomeworkScreen() {
     <Screen>
       <Text variant="display">Homework</Text>
       <Text variant="body" color="textSecondary">
-        Real Spanish between sessions: shows, books, and podcasts picked for your level ({data.level}). Log what you do
-        and it counts toward your hours.
+        Real {language().name} between sessions: shows, books, and podcasts picked for your level (
+        {levelLabel(data.level)}). Log what you do and it counts toward your hours.
       </Text>
 
       <Section title="Assigned">

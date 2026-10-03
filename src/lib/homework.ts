@@ -1,7 +1,8 @@
 import { isAiReady } from '@/lib/ai/llm';
 import { planHomework, reviewReflection } from '@/lib/ai/tutor';
-import { CEFR_LEVELS, levelBase, mediaCatalog, type Cefr, type MediaItem, type MediaType, type Unit } from '@/lib/curriculum';
+import { CEFR_LEVELS, course, levelBase, type Cefr, type MediaItem, type MediaType, type Unit } from '@/lib/curriculum';
 import { all, first, run, uid } from '@/lib/db';
+import { language } from '@/lib/languages';
 import { recordAttempt, type Interest } from '@/lib/learner';
 import { shuffle } from '@/lib/text';
 
@@ -37,7 +38,7 @@ const INTEREST_TYPES: Partial<Record<Interest, MediaType[]>> = {
 /** Media whose level range fits the learner, stretching one level up for "i+1" input. */
 export function levelAppropriateMedia(level: Cefr, interests: Interest[] = []): MediaItem[] {
   const li = CEFR_LEVELS.indexOf(level);
-  const fits = mediaCatalog.filter((m) => {
+  const fits = course().mediaCatalog.filter((m) => {
     const min = CEFR_LEVELS.indexOf(m.minLevel);
     const max = CEFR_LEVELS.indexOf(m.maxLevel);
     return min <= li + (li < 2 ? 0 : 1) && max >= li;
@@ -123,7 +124,7 @@ export async function assignHomework(args: {
     plans = picked.map((m) => ({
       media: m,
       title: `${verbFor(m.type)} ${m.title}`,
-      instructions: `${m.howToUse} Afterwards, jot down 3-5 new words and write two sentences in Spanish about what you ${pastVerbFor(m.type)}.`,
+      instructions: `${m.howToUse} Afterwards, jot down 3-5 new words and write two sentences in ${language().name} about what you ${pastVerbFor(m.type)}.`,
       minutes: m.type === 'movie' ? 60 : 30,
     }));
   }
@@ -184,7 +185,7 @@ export function skipHomework(id: string) {
 }
 
 export function mediaFor(hw: Pick<Homework, 'media_id'>) {
-  return hw.media_id ? mediaCatalog.find((m) => m.id === hw.media_id) : undefined;
+  return hw.media_id ? course().mediaCatalog.find((m) => m.id === hw.media_id) : undefined;
 }
 
 function verbFor(type: MediaType) {

@@ -1,5 +1,6 @@
 import { getVocab, unitDifficulty, type Unit, type VocabItem } from '@/lib/curriculum';
 import { all, first, run, transaction, uid } from '@/lib/db';
+import { language } from '@/lib/languages';
 import { newCard, schedule, type CardState, type Grade, type SrsCard } from '@/lib/srs';
 
 export type Direction = 'es_en' | 'en_es';
@@ -13,9 +14,11 @@ export type CardRow = SrsCard & {
 
 export type ResolvedVocab = { vocab: VocabItem; unit: Unit | null; difficulty: number };
 
+// Columns are named for the original Spanish-only schema: `es` holds target-language text.
 type CustomVocabRow = {
   id: string;
   es: string;
+  reading: string | null;
   en: string;
   pos: VocabItem['pos'];
   gender: 'm' | 'f' | null;
@@ -32,11 +35,12 @@ export function resolveVocab(id: string, fallbackDifficulty = 50): ResolvedVocab
   return {
     vocab: {
       id: row.id,
-      es: row.es,
+      text: row.es,
+      reading: row.reading ?? undefined,
       en: row.en,
       pos: row.pos,
       gender: row.gender ?? undefined,
-      example: { es: row.example_es, en: row.example_en },
+      example: { text: row.example_es, en: row.example_en },
     },
     unit: null,
     difficulty: fallbackDifficulty,
@@ -46,9 +50,9 @@ export function resolveVocab(id: string, fallbackDifficulty = 50): ResolvedVocab
 export function addCustomVocab(v: Omit<VocabItem, 'id'>, source: string) {
   const id = uid('cv-');
   run(
-    `INSERT INTO custom_vocab (id, es, en, pos, gender, example_es, example_en, source, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, v.es, v.en, v.pos, v.gender ?? null, v.example.es, v.example.en, source, Date.now()]
+    `INSERT INTO custom_vocab (id, es, reading, en, pos, gender, example_es, example_en, source, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, v.text, v.reading ?? null, v.en, v.pos, v.gender ?? null, v.example.text, v.example.en, source, Date.now()]
   );
   introduceVocab(id);
   return id;
@@ -156,11 +160,14 @@ export function weakVocab(limit = 10): VocabItem[] {
 // Feminine nouns starting with a stressed "a" take "el" in the singular.
 const STRESSED_A_NOUNS = new Set(['agua', 'águila', 'alma', 'arma', 'área', 'hambre', 'hacha', 'ave', 'aula', 'hada', 'ala', 'ancla', 'arpa', 'ama']);
 
-/** Word with its article when we can tell it's a singular noun; plural-looking nouns get a gender tag. */
+/**
+ * How a word is shown on cards. Spanish nouns get their article when we can
+ * tell they're singular; plural-looking nouns get a gender tag.
+ */
 export function vocabLabel(v: VocabItem) {
-  if (v.pos !== 'noun' || !v.gender) return v.es;
-  const head = v.es.split(' ')[0].toLowerCase();
-  if (head.endsWith('s')) return `${v.es} (${v.gender === 'm' ? 'masc.' : 'fem.'})`;
+  if (language().code !== 'es' || v.pos !== 'noun' || !v.gender) return v.text;
+  const head = v.text.split(' ')[0].toLowerCase();
+  if (head.endsWith('s')) return `${v.text} (${v.gender === 'm' ? 'masc.' : 'fem.'})`;
   const article = v.gender === 'm' || STRESSED_A_NOUNS.has(head) ? 'el' : 'la';
-  return `${article} ${v.es}`;
+  return `${article} ${v.text}`;
 }
