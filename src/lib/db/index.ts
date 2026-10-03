@@ -1,8 +1,19 @@
-import { openDatabaseSync, type SQLiteBindParams } from 'expo-sqlite';
+import { openDatabaseSync, type SQLiteBindParams, type SQLiteDatabase } from 'expo-sqlite';
 
-export const db = openDatabaseSync('hablo.db', { enableChangeListener: true });
+import { isLanguageCode, LANGUAGE_CODES, setActiveLanguageCode, type LanguageCode } from '@/lib/languages';
 
-const MIGRATIONS: string[] = [
+/**
+ * Storage is split in two:
+ * - `app.db` holds app-wide settings (which course is active, the AI provider).
+ * - Each language has its own course database with the learner's profile,
+ *   cards, sessions and homework, so switching languages keeps both histories.
+ */
+const appDb = openDatabaseSync('app.db', { enableChangeListener: true });
+
+// Spanish predates multi-language support and keeps its original file.
+const COURSE_FILES: Record<LanguageCode, string> = { es: 'hablo.db', ja: 'hablo-ja.db' };
+
+const COURSE_MIGRATIONS: string[] = [
   // 1: initial schema
   `
   CREATE TABLE profile (
@@ -119,45 +130,128 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX vocab_refresh_pending ON vocab_refresh (status, unit_order);
   `,
+  // 3: reading aids for languages with non-Latin scripts
+  `
+  ALTER TABLE profile ADD COLUMN show_readings INTEGER NOT NULL DEFAULT 1;
+  ALTER TABLE profile ADD COLUMN show_romaji INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE custom_vocab ADD COLUMN reading TEXT;
+  `,
 ];
 
-export function migrate() {
-  const row = db.getFirstSync<{ user_version: number }>('PRAGMA user_version');
+const APP_MIGRATIONS: string[] = [
+  `CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);`,
+];
+
+function migrateDb(target: SQLiteDatabase, migrations: string[]) {
+  const row = target.getFirstSync<{ user_version: number }>('PRAGMA user_version');
   let version = row?.user_version ?? 0;
-  db.execSync('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
-  while (version < MIGRATIONS.length) {
-    const sql = MIGRATIONS[version];
-    db.withTransactionSync(() => {
-      db.execSync(sql);
-      db.execSync(`PRAGMA user_version = ${version + 1}`);
+  target.execSync('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
+  while (version < migrations.length) {
+    const sql = migrations[version];
+    target.withTransactionSync(() => {
+      target.execSync(sql);
+      target.execSync(`PRAGMA user_version = ${version + 1}`);
     });
     version++;
   }
 }
 
+// ---------- App settings ----------
+
+export function getSetting(key: string): string | null {
+  return appDb.getFirstSync<{ value: string }>('SELECT value FROM settings WHERE key = ?', [key])?.value ?? null;
+}
+
+export function setSetting(key: string, value: string | null) {
+  if (value === null) appDb.runSync('DELETE FROM settings WHERE key = ?', [key]);
+  else appDb.runSync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [key, value]);
+}
+
+// ---------- Courses ----------
+
+const courseDbs = new Map<LanguageCode, SQLiteDatabase>();
+
+function courseDb(code: LanguageCode) {
+  let target = courseDbs.get(code);
+  if (!target) {
+    target = openDatabaseSync(COURSE_FILES[code], { enableChangeListener: true });
+    migrateDb(target, COURSE_MIGRATIONS);
+    courseDbs.set(code, target);
+  }
+  return target;
+}
+
+let db: SQLiteDatabase | null = null;
+
+/** Opens the app settings and the last-used course. Call once at startup. */
+export function initDatabases() {
+  migrateDb(appDb, APP_MIGRATIONS);
+  let code = getSetting('language');
+  if (!isLanguageCode(code)) {
+    // Installs from before language choice were Spanish-only.
+    code = courseHasProfile('es') ? 'es' : null;
+    if (code) setSetting('language', code);
+  }
+  if (isLanguageCode(code)) {
+    db = courseDb(code);
+    setActiveLanguageCode(code);
+  }
+}
+
+/** Makes `code` the active course. Its data is created on first use. */
+export function selectCourse(code: LanguageCode) {
+  db = courseDb(code);
+  setActiveLanguageCode(code);
+  // Also wakes every useDbQuery so screens re-read from the new course.
+  setSetting('language', code);
+}
+
+export function hasActiveCourse() {
+  return db !== null;
+}
+
+export function courseHasProfile(code: LanguageCode) {
+  return !!courseDb(code).getFirstSync('SELECT 1 FROM profile WHERE id = 1');
+}
+
+/** Reads from a course other than (or including) the active one, e.g. for the course switcher. */
+export function firstIn<T>(code: LanguageCode, sql: string, params: SQLiteBindParams = []): T | null {
+  return courseDb(code).getFirstSync<T>(sql, params);
+}
+
+export function startedCourses(): LanguageCode[] {
+  return LANGUAGE_CODES.filter(courseHasProfile);
+}
+
+function requireDb() {
+  if (!db) throw new Error('No course selected');
+  return db;
+}
+
 export function all<T>(sql: string, params: SQLiteBindParams = []): T[] {
-  return db.getAllSync<T>(sql, params);
+  return requireDb().getAllSync<T>(sql, params);
 }
 
 export function first<T>(sql: string, params: SQLiteBindParams = []): T | null {
-  return db.getFirstSync<T>(sql, params);
+  return requireDb().getFirstSync<T>(sql, params);
 }
 
 export function run(sql: string, params: SQLiteBindParams = []) {
-  return db.runSync(sql, params);
+  return requireDb().runSync(sql, params);
 }
 
 export function transaction(fn: () => void) {
-  db.withTransactionSync(fn);
+  requireDb().withTransactionSync(fn);
 }
 
 export function uid(prefix = '') {
   return `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 }
 
-/** Wipes all learner data (settings "reset progress"). */
-export function resetAll() {
-  db.withTransactionSync(() => {
+/** Wipes the active course's learner data (settings "reset progress"). Other courses are untouched. */
+export function resetCourse() {
+  const target = requireDb();
+  target.withTransactionSync(() => {
     for (const table of [
       'profile',
       'unit_progress',
@@ -170,7 +264,7 @@ export function resetAll() {
       'homework',
       'vocab_refresh',
     ]) {
-      db.execSync(`DELETE FROM ${table}`);
+      target.execSync(`DELETE FROM ${table}`);
     }
   });
 }

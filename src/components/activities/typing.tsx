@@ -6,10 +6,12 @@ import { AudioButton, Feedback, haptic } from '@/components/ui/controls';
 import { Icons } from '@/components/ui/icon';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/layout';
+import { TargetText } from '@/components/ui/target-text';
 import { Text } from '@/components/ui/text';
 import { Spacing } from '@/constants/theme';
 import { gradeTranslation, type Grade as AiGrade } from '@/lib/ai/tutor';
-import { speakSpanish } from '@/lib/speech';
+import { language } from '@/lib/languages';
+import { speak } from '@/lib/speech';
 import { checkTyped, compareSentences, type WordMatch } from '@/lib/text';
 
 import { ActivityShell, ContinueButton, type ActivityProps } from './shell';
@@ -18,17 +20,20 @@ import { WordDiff } from './word-diff';
 export function DictationActivity({ activity, onDone }: ActivityProps<'dictation'>) {
   const { sentence } = activity;
   const [text, setText] = useState('');
-  const [result, setResult] = useState<{ score: number; matches: WordMatch[]; accentSlip: boolean } | null>(null);
+  const [result, setResult] = useState<{ score: number; matches: WordMatch[]; slip: boolean } | null>(null);
+  const lang = language();
 
   useEffect(() => {
-    speakSpanish(sentence.es);
-  }, [sentence.es]);
+    speak(sentence.text);
+  }, [sentence.text]);
 
   function check() {
-    const typed = checkTyped(sentence.es, text);
-    const cmp = compareSentences(sentence.es, text);
-    const score = typed.correct ? (typed.accentSlip ? 0.9 : 1) : cmp.score;
-    setResult({ score, matches: cmp.matches, accentSlip: typed.accentSlip });
+    const typed = checkTyped(sentence.text, text, sentence.reading);
+    const cmp = compareSentences(sentence.text, text, sentence.reading);
+    // Kana for kanji is a fine way to take dictation; missing accents (Spanish) cost a little.
+    const slipScore = lang.spaced ? 0.9 : 1;
+    const score = typed.correct ? (typed.slip ? slipScore : 1) : cmp.score;
+    setResult({ score, matches: cmp.matches, slip: typed.slip });
     haptic(score >= 0.8 ? 'success' : 'error');
   }
 
@@ -44,7 +49,7 @@ export function DictationActivity({ activity, onDone }: ActivityProps<'dictation
                 skill: 'listening',
                 score: result.score,
                 prompt: 'dictation',
-                expected: sentence.es,
+                expected: sentence.text,
                 response: text,
               })
             }
@@ -54,7 +59,7 @@ export function DictationActivity({ activity, onDone }: ActivityProps<'dictation
         )
       }>
       <View style={styles.audio}>
-        <AudioButton text={sentence.es} size={80} />
+        <AudioButton text={sentence.text} size={80} />
       </View>
       <Input
         large
@@ -62,7 +67,7 @@ export function DictationActivity({ activity, onDone }: ActivityProps<'dictation
         value={text}
         onChangeText={setText}
         editable={!result}
-        placeholder="Escribe aquí…"
+        placeholder={lang.phrases.writeHere}
         autoFocus
       />
       {result ? (
@@ -70,14 +75,15 @@ export function DictationActivity({ activity, onDone }: ActivityProps<'dictation
           tone={result.score >= 0.95 ? 'success' : result.score >= 0.6 ? 'warning' : 'error'}
           title={
             result.score >= 0.95
-              ? result.accentSlip
-                ? 'Right — watch the accents'
-                : '¡Perfecto!'
+              ? result.slip && lang.spaced
+                ? lang.slipTitle
+                : lang.phrases.perfect
               : result.score >= 0.6
                 ? 'Close!'
                 : 'Keep listening'
           }>
           <WordDiff matches={result.matches} />
+          {!lang.spaced ? <TargetText text={sentence.text} reading={sentence.reading} variant="bodyStrong" /> : null}
           <Text variant="caption">{sentence.en}</Text>
         </Feedback>
       ) : null}
@@ -90,26 +96,27 @@ export function TranslateActivity({ activity, onDone, level, aiReady }: Activity
   const [text, setText] = useState('');
   const [checking, setChecking] = useState(false);
   const [grade, setGrade] = useState<AiGrade | null>(null);
+  const lang = language();
 
   async function check() {
     setChecking(true);
     let result: AiGrade | null = null;
     if (aiReady) {
       try {
-        result = await gradeTranslation({ level, english: sentence.en, reference: sentence.es, answer: text });
+        result = await gradeTranslation({ level, english: sentence.en, reference: sentence.text, answer: text });
       } catch {
         result = null;
       }
     }
     if (!result) {
       // Offline fallback: compare against the reference sentence.
-      const typed = checkTyped(sentence.es, text);
-      const cmp = compareSentences(sentence.es, text);
+      const typed = checkTyped(sentence.text, text, sentence.reading);
+      const cmp = compareSentences(sentence.text, text, sentence.reading);
       const score = typed.correct ? 1 : cmp.score;
       result = {
         score,
         verdict: score >= 0.95 ? 'correct' : score >= 0.7 ? 'almost' : 'incorrect',
-        corrected: sentence.es,
+        corrected: sentence.text,
         explanation:
           score >= 0.95
             ? 'Matches the model answer.'
@@ -119,14 +126,15 @@ export function TranslateActivity({ activity, onDone, level, aiReady }: Activity
     setGrade(result);
     setChecking(false);
     haptic(result.score >= 0.7 ? 'success' : 'error');
-    speakSpanish(result.verdict === 'correct' ? text : sentence.es);
+    // Romaji answers can't be read aloud properly, so Japanese always plays the model answer.
+    speak(result.verdict === 'correct' && lang.spaced ? text : sentence.text);
   }
 
   const tone = grade?.verdict === 'correct' ? 'success' : grade?.verdict === 'almost' ? 'warning' : 'error';
 
   return (
     <ActivityShell
-      kicker="Translate into Spanish"
+      kicker={`Translate into ${lang.name}`}
       icon={Icons.pencil}
       footer={
         grade ? (
@@ -136,7 +144,7 @@ export function TranslateActivity({ activity, onDone, level, aiReady }: Activity
                 skill: 'writing',
                 score: grade.score,
                 prompt: sentence.en,
-                expected: sentence.es,
+                expected: sentence.text,
                 response: text,
                 feedback: grade.explanation,
               })
@@ -155,18 +163,23 @@ export function TranslateActivity({ activity, onDone, level, aiReady }: Activity
         value={text}
         onChangeText={setText}
         editable={!grade}
-        placeholder="En español…"
+        placeholder={lang.phrases.writeInLanguage}
         autoFocus
       />
       {grade ? (
         <Feedback
           tone={tone}
-          title={grade.verdict === 'correct' ? '¡Excelente!' : grade.verdict === 'almost' ? 'Almost there' : 'Not quite'}>
+          title={grade.verdict === 'correct' ? lang.phrases.excellent : grade.verdict === 'almost' ? 'Almost there' : 'Not quite'}>
           <Text variant="body">{grade.explanation}</Text>
           {grade.verdict !== 'correct' && grade.corrected ? (
             <Text variant="bodyStrong">✓ {grade.corrected}</Text>
           ) : null}
-          {grade.corrected !== sentence.es ? <Text variant="caption">Model answer: {sentence.es}</Text> : null}
+          {grade.corrected !== sentence.text ? (
+            <>
+              <Text variant="caption">Model answer:</Text>
+              <TargetText text={sentence.text} reading={sentence.reading} variant="body" />
+            </>
+          ) : null}
         </Feedback>
       ) : null}
     </ActivityShell>

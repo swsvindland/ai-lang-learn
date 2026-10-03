@@ -12,9 +12,9 @@ import {
   type CardRow,
 } from '@/lib/cards';
 import {
+  courseUnits,
   ratingToCefr,
   unitDifficulty,
-  units,
   type Cefr,
   type ClozeDrill,
   type GrammarPoint,
@@ -39,7 +39,7 @@ import {
   type Skill,
 } from '@/lib/learner';
 import type { Grade } from '@/lib/srs';
-import { pick, sample, shuffle, words } from '@/lib/text';
+import { pick, sample, sentenceLength, shuffle } from '@/lib/text';
 
 import type { Activity, ActivityResult, Block, BlockKind, SessionSummary } from './types';
 
@@ -89,8 +89,14 @@ export class SessionEngine {
     this.aiReady = isAiReady();
     this.interests = profile?.interests ?? [];
     this.targetMinutes = profile?.sessionMinutes ?? 25;
-    // Fewer new words at higher levels where each word is harder to place.
-    this.newWordLimit = Math.max(6, Math.round((this.targetMinutes / 25) * (this.level === 'A1' ? 10 : 8)));
+    // Fewer new words at higher levels where each word is harder to place; single
+    // kana characters are quick, so writing-system units introduce more at once.
+    const perSession = this.unit.vocab.every((v) => v.pos === 'character' || v.pos === 'phrase')
+      ? 15
+      : this.level === 'A1'
+        ? 10
+        : 8;
+    this.newWordLimit = Math.max(6, Math.round((this.targetMinutes / 25) * perSession));
     this.blocks = this.planBlocks();
     run(
       `INSERT INTO sessions (id, started_at, target_minutes, unit_id, status) VALUES (?, ?, ?, ?, 'active')`,
@@ -325,10 +331,10 @@ export class SessionEngine {
   }
 
   private unusedDrill(grammar: GrammarPoint): Activity | null {
-    const drills = grammar.drills.filter((d) => !this.usedDrills.has(d.es));
+    const drills = grammar.drills.filter((d) => !this.usedDrills.has(d.text));
     if (!drills.length) return null;
     const drill = pick(drills);
-    this.usedDrills.add(drill.es);
+    this.usedDrills.add(drill.text);
     return clozeActivity(drill, grammar.id);
   }
 
@@ -337,14 +343,14 @@ export class SessionEngine {
     for (const g of this.unit.grammar) pool.push(...g.examples);
     for (const v of this.unit.vocab) if (isIntroduced(v.id)) pool.push(v.example);
     for (const v of knownVocab(30)) pool.push(v.example);
-    return pool.filter((s) => s.es && s.en);
+    return pool.filter((s) => s.text && s.en);
   }
 
   private freshSentence(filter: (s: Sentence) => boolean = () => true): Sentence | null {
     const pool = this.sentencePool().filter(filter);
-    const unused = pool.filter((s) => !this.usedSentences.has(s.es));
+    const unused = pool.filter((s) => !this.usedSentences.has(s.text));
     const choice = unused.length ? pick(unused) : pool.length ? pick(pool) : null;
-    if (choice) this.usedSentences.add(choice.es);
+    if (choice) this.usedSentences.add(choice.text);
     return choice;
   }
 
@@ -399,7 +405,7 @@ export class SessionEngine {
       case 'cloze': {
         // 70% current unit, 30% spaced review of earlier grammar.
         const statuses = unitStatuses();
-        const earlier = units.filter(
+        const earlier = courseUnits().filter(
           (u) => u.order < this.unit.order && (statuses[u.id] === 'done' || statuses[u.id] === 'skipped')
         );
         const source = earlier.length && Math.random() < 0.3 ? pick(earlier) : this.unit;
@@ -407,7 +413,7 @@ export class SessionEngine {
         return grammar ? this.unusedDrill(grammar) : null;
       }
       case 'listen-choice': {
-        const sentence = this.freshSentence((s) => words(s.es).length <= 14);
+        const sentence = this.freshSentence((s) => sentenceLength(s) <= 14);
         if (!sentence) return null;
         const others = shuffle(this.sentencePool().filter((s) => s.en !== sentence.en)).slice(0, 3);
         if (others.length < 2) return null;
@@ -415,17 +421,17 @@ export class SessionEngine {
         return { kind: 'listen-choice', sentence, options, answerIndex: options.indexOf(sentence.en) };
       }
       case 'dictation': {
-        const sentence = this.freshSentence((s) => words(s.es).length <= 8);
+        const sentence = this.freshSentence((s) => sentenceLength(s) <= 8);
         return sentence ? { kind: 'dictation', sentence } : null;
       }
       case 'speak': {
-        const sentence = this.freshSentence((s) => words(s.es).length <= 12);
+        const sentence = this.freshSentence((s) => sentenceLength(s) <= 12);
         if (!sentence) return null;
         const produce = this.level !== 'A1' && Math.random() < 0.4;
         return { kind: 'speak', sentence, mode: produce ? 'produce' : 'repeat' };
       }
       case 'translate': {
-        const sentence = this.freshSentence((s) => words(s.es).length <= 12);
+        const sentence = this.freshSentence((s) => sentenceLength(s) <= 12);
         return sentence ? { kind: 'translate', sentence } : null;
       }
       case 'reading': {
@@ -530,11 +536,11 @@ function activityDifficulty(activity: Activity, unit: Unit) {
     return activity.difficulty;
   }
   if (activity.kind === 'cloze') {
-    const owner = units.find((u) => u.grammar.some((g) => g.id === activity.grammarId));
+    const owner = courseUnits().find((u) => u.grammar.some((g) => g.id === activity.grammarId));
     return unitDifficulty(owner ?? unit);
   }
   const base = unitDifficulty(unit);
-  // Producing Spanish is harder than recognizing it.
+  // Producing the language is harder than recognizing it.
   if (activity.kind === 'speak' && activity.mode === 'produce') return base + 15;
   if (activity.kind === 'translate' || activity.kind === 'conversation') return base + 10;
   return base;

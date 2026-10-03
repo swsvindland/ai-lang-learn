@@ -1,37 +1,62 @@
-import { mediaCatalog } from './data/media';
-import { placementItems } from './data/placement';
-import { unitsA } from './data/units-a';
-import { unitsB } from './data/units-b';
-import { unitsC } from './data/units-c';
-import { CEFR_LEVELS, type Cefr, type GrammarPoint, type Unit, type VocabItem } from './types';
+import { language, type LanguageCode } from '@/lib/languages';
+
+import { spanishCourse } from './es';
+import { japaneseCourse } from './ja';
+import { CEFR_LEVELS, type Cefr, type CourseContent, type GrammarPoint, type Unit, type VocabItem } from './types';
 
 export * from './types';
-export { mediaCatalog, placementItems };
 
-export const units: Unit[] = [...unitsA, ...unitsB, ...unitsC].sort((a, b) => a.order - b.order);
+const CONTENT: Record<LanguageCode, CourseContent> = { es: spanishCourse, ja: japaneseCourse };
 
-const unitById = new Map(units.map((u) => [u.id, u]));
-const vocabById = new Map<string, { vocab: VocabItem; unit: Unit }>();
-const grammarById = new Map<string, { grammar: GrammarPoint; unit: Unit }>();
-for (const unit of units) {
-  for (const vocab of unit.vocab) vocabById.set(vocab.id, { vocab, unit });
-  for (const grammar of unit.grammar) grammarById.set(grammar.id, { grammar, unit });
+type Course = CourseContent & {
+  code: LanguageCode;
+  unitById: Map<string, Unit>;
+  vocabById: Map<string, { vocab: VocabItem; unit: Unit }>;
+  grammarById: Map<string, { grammar: GrammarPoint; unit: Unit }>;
+};
+
+const built = new Map<LanguageCode, Course>();
+
+function build(code: LanguageCode): Course {
+  const content = CONTENT[code];
+  const units = [...content.units].sort((a, b) => a.order - b.order);
+  const vocabById: Course['vocabById'] = new Map();
+  const grammarById: Course['grammarById'] = new Map();
+  for (const unit of units) {
+    for (const vocab of unit.vocab) vocabById.set(vocab.id, { vocab, unit });
+    for (const grammar of unit.grammar) grammarById.set(grammar.id, { grammar, unit });
+  }
+  return { ...content, units, code, unitById: new Map(units.map((u) => [u.id, u])), vocabById, grammarById };
+}
+
+/** The bundled course for the language being studied (or `code`). */
+export function course(code: LanguageCode = language().code): Course {
+  let c = built.get(code);
+  if (!c) {
+    c = build(code);
+    built.set(code, c);
+  }
+  return c;
+}
+
+export function courseUnits() {
+  return course().units;
 }
 
 export function getUnit(id: string) {
-  return unitById.get(id);
+  return course().unitById.get(id);
 }
 
 export function getVocab(id: string) {
-  return vocabById.get(id);
+  return course().vocabById.get(id);
 }
 
 export function getGrammar(id: string) {
-  return grammarById.get(id);
+  return course().grammarById.get(id);
 }
 
 export function allVocab() {
-  return [...vocabById.values()];
+  return [...course().vocabById.values()];
 }
 
 /**
@@ -58,44 +83,22 @@ export function ratingProgress(rating: number) {
 
 /** Difficulty of material in a unit on the same 0-600 scale. */
 export function unitDifficulty(unit: Unit) {
-  const peers = units.filter((u) => u.cefr === unit.cefr);
+  const peers = courseUnits().filter((u) => u.cefr === unit.cefr);
   const index = peers.findIndex((u) => u.id === unit.id);
   return levelBase(unit.cefr) + ((index + 0.5) / Math.max(1, peers.length)) * LEVEL_SPAN;
 }
 
 export function firstUnitAtLevel(level: Cefr) {
+  const units = courseUnits();
   return units.find((u) => CEFR_LEVELS.indexOf(u.cefr) >= CEFR_LEVELS.indexOf(level)) ?? units[units.length - 1];
 }
 
 export function nextUnit(unitId: string) {
   const unit = getUnit(unitId);
   if (!unit) return undefined;
-  return units.find((u) => u.order > unit.order);
+  return courseUnits().find((u) => u.order > unit.order);
 }
 
 export function levelIndex(level: Cefr) {
   return CEFR_LEVELS.indexOf(level);
 }
-
-/**
- * Rough guided-study hours to reach each level for an English speaker, based on
- * commonly cited estimates (FSI puts Spanish at ~600-750 class hours for
- * professional working proficiency). Includes out-of-app immersion.
- */
-export const CUMULATIVE_HOURS: Record<Cefr, number> = {
-  A1: 0,
-  A2: 80,
-  B1: 200,
-  B2: 400,
-  C1: 650,
-  C2: 1000,
-};
-
-export const LEVEL_DESCRIPTIONS: Record<Cefr, string> = {
-  A1: 'Beginner: introduce yourself, order food, handle simple, slow exchanges.',
-  A2: 'Elementary: talk about your past, routines, shopping, travel basics.',
-  B1: 'Intermediate: tell stories, give opinions, handle most travel situations.',
-  B2: 'Upper-intermediate: follow native TV, debate, work in Spanish with effort.',
-  C1: 'Advanced (fluent): express yourself spontaneously and precisely on almost anything.',
-  C2: 'Mastery: near-native nuance, humor, and register.',
-};

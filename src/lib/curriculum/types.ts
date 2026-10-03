@@ -12,13 +12,24 @@ export type PartOfSpeech =
   | 'phrase'
   | 'determiner'
   | 'interjection'
-  | 'number';
+  | 'number'
+  | 'particle'
+  | 'counter'
+  /** A single kana character being learned (Japanese writing-system units). */
+  | 'character';
 
-export type Sentence = { es: string; en: string };
+/**
+ * Target-language text with an English gloss. `reading` is only used for
+ * languages written with characters whose pronunciation isn't obvious
+ * (Japanese): the whole text in kana, with spaces between words and particles,
+ * e.g. { text: '私は学生です。', reading: 'わたし は がくせい です。' }.
+ */
+export type Sentence = { text: string; reading?: string; en: string };
 
-/** A fill-in-the-blank drill. `es` contains exactly one `___` that `answer` fills. */
+/** A fill-in-the-blank drill. `text` (and `reading`) contain exactly one `___` that `answer` fills. */
 export type ClozeDrill = {
-  es: string;
+  text: string;
+  reading?: string;
   en: string;
   answer: string;
   /** Plausible wrong answers for multiple choice (2-3). */
@@ -36,7 +47,9 @@ export type GrammarPoint = {
 
 export type VocabItem = {
   id: string;
-  es: string;
+  text: string;
+  /** Kana reading for Japanese; omitted when it would equal `text`. */
+  reading?: string;
   en: string;
   pos: PartOfSpeech;
   gender?: 'm' | 'f';
@@ -52,8 +65,10 @@ export type Scenario = {
   aiRole: string;
   /** What the learner should try to accomplish, in English. */
   learnerGoal: string;
-  /** The AI's first line, in Spanish, level-appropriate. */
+  /** The AI's first line, in the target language, level-appropriate. */
   opener: string;
+  /** Kana reading of `opener` (Japanese). */
+  openerReading?: string;
 };
 
 export type Unit = {
@@ -87,11 +102,18 @@ export type MediaItem = {
   type: MediaType;
   minLevel: Cefr;
   maxLevel: Cefr;
-  /** Country or region of the Spanish used, e.g. "Mexico", "Spain", "Colombia", "Neutral". */
+  /** Country, region, or variety of the language used, e.g. "Mexico", "Spain", "Tokyo (standard)", "Neutral". */
   region: string;
   description: string;
   /** Concrete study tip for using this with a language focus. */
   howToUse: string;
   /** Where it can typically be found, e.g. "Netflix", "YouTube", "Spotify, Apple Podcasts". */
   whereToFind: string;
+};
+
+/** Everything bundled for one language. */
+export type CourseContent = {
+  units: Unit[];
+  placementItems: PlacementItem[];
+  mediaCatalog: MediaItem[];
 };

@@ -7,16 +7,18 @@ import { Icon, Icons } from '@/components/ui/icon';
 import { Card, Pill, Screen } from '@/components/ui/layout';
 import { Text } from '@/components/ui/text';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
-import { units, type Unit } from '@/lib/curriculum';
+import { courseUnits, unitDifficulty, type Unit } from '@/lib/curriculum';
+import { levelLabel } from '@/lib/languages';
 import { overallLevel, recordAttempt, unitStatuses } from '@/lib/learner';
-import { unitDifficulty } from '@/lib/curriculum';
 
 /** Free conversation practice outside of sessions, using any unlocked scenario. */
 export default function ConversationScreen() {
   const [unit, setUnit] = useState<Unit | null>(null);
   const level = overallLevel();
   const statuses = unitStatuses();
-  const available = units.filter((u) => statuses[u.id] && statuses[u.id] !== 'locked').reverse();
+  const available = courseUnits()
+    .filter((u) => statuses[u.id] && statuses[u.id] !== 'locked')
+    .reverse();
 
   if (!unit) {
     return (
@@ -28,7 +30,7 @@ export default function ConversationScreen() {
           <Pressable key={u.id} onPress={() => setUnit(u)}>
             <Card style={styles.row}>
               <View style={styles.flex}>
-                <Pill label={u.cefr} tone="primary" />
+                <Pill label={levelLabel(u.cefr)} tone="primary" />
                 <Text variant="bodyStrong">{u.scenario.title}</Text>
                 <Text variant="caption" numberOfLines={2}>
                   {u.scenario.setting}

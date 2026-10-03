@@ -6,16 +6,17 @@ import { useColorScheme } from 'react-native';
 import { Colors } from '@/constants/theme';
 import { useDbQuery } from '@/hooks/use-db-query';
 import { getAvailability } from '@/lib/ai/llm';
-import { migrate } from '@/lib/db';
+import { hasActiveCourse, initDatabases } from '@/lib/db';
 import { getProfile } from '@/lib/learner';
 
-migrate();
+initDatabases();
 getAvailability();
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const scheme = useColorScheme();
-  const onboarded = useDbQuery(() => !!getProfile());
+  // Each language is its own course; a course without a profile still needs setup.
+  const onboarded = useDbQuery(() => hasActiveCourse() && !!getProfile());
   const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
   const base = scheme === 'dark' ? DarkTheme : DefaultTheme;
 
@@ -45,6 +46,8 @@ export default function RootLayout() {
           <Stack.Screen name="unit/[id]" options={{ headerShown: true, title: '', headerBackTitle: 'Journey' }} />
           <Stack.Screen name="dev" options={{ headerShown: true, title: 'Activity gallery (dev)' }} />
         </Stack.Protected>
+        {/* Reachable from onboarding too: AI settings are app-wide, not per course. */}
+        <Stack.Screen name="ai" options={{ presentation: 'modal', headerShown: true, title: 'AI tutor' }} />
       </Stack>
     </ThemeProvider>
   );

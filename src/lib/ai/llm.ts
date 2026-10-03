@@ -1,8 +1,10 @@
 import { Platform } from 'react-native';
 
-import { OnDeviceLlm, type LlmAvailability } from '@modules/on-device-llm';
+import { OnDeviceLlm } from '@modules/on-device-llm';
 
-export type { LlmAvailability };
+import { chatCompletion, type CloudEndpoint } from './cloud';
+import { initPlus, isPlusActive, plusAvailableInBuild, plusEndpoint, subscribePlus } from './plus';
+import { aiProvider, loadOpenRouterKey, openRouterModel, type AiProvider } from './settings';
 
 /** The JSON Schema subset the native layer can turn into guided generation. */
 export type JsonSchema =
@@ -24,7 +26,7 @@ export type GenerateTextOptions = {
   prompt: string;
   temperature?: number;
   maxTokens?: number;
-  /** Receives the cumulative text as it streams. */
+  /** Receives the cumulative text as it streams (on-device only; cloud delivers it once at the end). */
   onPartial?: (text: string) => void;
 };
 
@@ -39,31 +41,93 @@ export type GenerateJsonOptions<T> = {
   maxTokens?: number;
 };
 
-const UNAVAILABLE: LlmAvailability = {
-  status: 'unavailable',
-  backend: 'none',
-  reason:
-    Platform.OS === 'web'
-      ? 'On-device AI is not available on the web.'
-      : 'On-device AI needs a development build (not Expo Go).',
+export type AiBackend = 'apple' | 'gemini-nano' | 'openrouter' | 'plus' | 'none';
+
+export type LlmAvailability = {
+  status: 'available' | 'downloadable' | 'downloading' | 'unavailable';
+  provider: AiProvider;
+  backend: AiBackend;
+  /** Short name for the UI, e.g. "Apple Intelligence" or "DeepSeek via OpenRouter". */
+  label: string;
+  /** Requests leave the device. */
+  cloud: boolean;
+  reason?: string;
 };
 
+const DEVICE_LABEL: Record<string, string> = { apple: 'Apple Intelligence', 'gemini-nano': 'Gemini Nano' };
+
+// ---------- Availability ----------
+
+let deviceStatus: LlmAvailability | null = null;
 let cachedAvailability: LlmAvailability | null = null;
 const listeners = new Set<(a: LlmAvailability) => void>();
 
-export async function getAvailability(refresh = false): Promise<LlmAvailability> {
-  if (cachedAvailability && !refresh) return cachedAvailability;
-  let next = UNAVAILABLE;
+async function deviceAvailability(refresh: boolean): Promise<LlmAvailability> {
+  if (deviceStatus && !refresh) return deviceStatus;
+  let next: LlmAvailability = {
+    status: 'unavailable',
+    provider: 'device',
+    backend: 'none',
+    label: 'On-device AI',
+    cloud: false,
+    reason:
+      Platform.OS === 'web'
+        ? 'On-device AI is not available on the web.'
+        : 'On-device AI needs a development build (not Expo Go).',
+  };
   if (OnDeviceLlm) {
     try {
-      next = await OnDeviceLlm.getAvailability();
+      const native = await OnDeviceLlm.getAvailability();
+      next = { ...next, ...native, label: DEVICE_LABEL[native.backend] ?? 'On-device AI', reason: native.reason };
     } catch (e) {
-      next = { status: 'unavailable', backend: 'none', reason: String(e) };
+      next = { ...next, reason: String(e) };
     }
   }
+  deviceStatus = next;
+  return next;
+}
+
+function modelLabel(model: string) {
+  const name = model.split('/').pop() ?? model;
+  return `${name} via OpenRouter`;
+}
+
+async function cloudAvailability(provider: Exclude<AiProvider, 'device'>): Promise<LlmAvailability> {
+  if (provider === 'openrouter') {
+    const key = await loadOpenRouterKey();
+    return {
+      status: key ? 'available' : 'unavailable',
+      provider,
+      backend: 'openrouter',
+      label: modelLabel(openRouterModel()),
+      cloud: true,
+      reason: key ? undefined : 'Add your OpenRouter API key in Settings → AI tutor.',
+    };
+  }
+  const base = { provider, backend: 'plus' as const, label: 'Hablo Plus', cloud: true };
+  if (!plusAvailableInBuild()) {
+    return { ...base, status: 'unavailable', reason: "Hablo Plus isn't set up in this build of the app." };
+  }
+  await initPlus();
+  return isPlusActive()
+    ? { ...base, status: 'available' }
+    : { ...base, status: 'unavailable', reason: 'Subscribe to Hablo Plus in Settings → AI tutor.' };
+}
+
+/** Status of the tutor the learner picked. Call with `refresh` after changing AI settings. */
+export async function getAvailability(refresh = false): Promise<LlmAvailability> {
+  if (cachedAvailability && !refresh) return cachedAvailability;
+  const provider = aiProvider();
+  const device = await deviceAvailability(refresh || !deviceStatus);
+  const next = provider === 'device' ? device : await cloudAvailability(provider);
   cachedAvailability = next;
   listeners.forEach((l) => l(next));
   return next;
+}
+
+/** On-device status regardless of the chosen provider (used for the settings screen and fallback). */
+export function getDeviceAvailability(refresh = false) {
+  return deviceAvailability(refresh);
 }
 
 export function peekAvailability() {
@@ -77,11 +141,20 @@ export function subscribeAvailability(listener: (a: LlmAvailability) => void) {
   };
 }
 
+subscribePlus(() => {
+  if (cachedAvailability?.provider === 'plus') getAvailability(true);
+});
+
 export function isAiReady() {
   return cachedAvailability?.status === 'available';
 }
 
-/** Downloads (Android) and warms up the model. Safe to call repeatedly. */
+/** Cloud models have room for much longer prompts and chat history than on-device ones. */
+export function hasLargeContext() {
+  return !!cachedAvailability?.cloud;
+}
+
+/** Downloads (Android) and warms up the on-device model. Safe to call repeatedly. */
 export async function prepareModel(onProgress?: (bytes: number) => void) {
   if (!OnDeviceLlm) return getAvailability(true);
   const sub = onProgress ? OnDeviceLlm.addListener('onDownloadProgress', (e) => onProgress(e.bytes)) : null;
@@ -93,21 +166,39 @@ export async function prepareModel(onProgress?: (bytes: number) => void) {
   return getAvailability(true);
 }
 
+// ---------- Running requests ----------
+
+export type Priority = 'foreground' | 'background';
+
+type Job = {
+  system?: string;
+  prompt: string;
+  temperature?: number;
+  maxTokens?: number;
+  schema?: JsonSchema;
+  priority?: Priority;
+  onPartial?: (text: string) => void;
+};
+
 // On-device models run one request at a time well; queue calls so a prefetch
-// never races the request the learner is waiting on.
+// never races the request the learner is waiting on. Cloud requests run in parallel.
 let queue: Promise<unknown> = Promise.resolve();
 // Bumped by cancelBackgroundWork(); background jobs from an older epoch are skipped.
 let backgroundEpoch = 0;
-const runningBackground = new Set<string>();
+const runningDevice = new Set<string>();
+const runningCloud = new Set<AbortController>();
+let requestCounter = 0;
 
-export type Priority = 'foreground' | 'background';
+class Cancelled extends Error {
+  constructor() {
+    super('Cancelled');
+  }
+}
 
 function enqueue<T>(job: () => Promise<T>, priority: Priority = 'foreground'): Promise<T> {
   const epoch = backgroundEpoch;
   const guarded = () => {
-    if (priority === 'background' && epoch !== backgroundEpoch) {
-      return Promise.reject(new Error('Cancelled'));
-    }
+    if (priority === 'background' && epoch !== backgroundEpoch) return Promise.reject(new Cancelled());
     return job();
   };
   const run = queue.then(guarded, guarded);
@@ -118,75 +209,139 @@ function enqueue<T>(job: () => Promise<T>, priority: Priority = 'foreground'): P
 /** Drops queued prefetch work and stops any running one, e.g. when a session wraps up. */
 export function cancelBackgroundWork() {
   backgroundEpoch++;
-  for (const id of runningBackground) OnDeviceLlm?.cancel(id);
-  runningBackground.clear();
+  for (const id of runningDevice) OnDeviceLlm?.cancel(id);
+  runningDevice.clear();
+  for (const controller of runningCloud) controller.abort();
+  runningCloud.clear();
 }
 
-let requestCounter = 0;
+function stripOrder(schema: JsonSchema) {
+  return JSON.stringify(schema, (key, value) => (key === 'propertyOrder' ? undefined : value));
+}
 
-export async function generateText(options: GenerateTextOptions): Promise<string> {
+function withSchemaInPrompt(prompt: string, schema: JsonSchema) {
+  return `${prompt}\n\nRespond with ONLY a JSON object (no markdown, no commentary) matching this JSON Schema:\n${stripOrder(schema)}`;
+}
+
+async function runOnDevice(job: Job): Promise<string> {
   const llm = OnDeviceLlm;
-  if (!llm || !isAiReady()) throw new Error('On-device AI unavailable');
+  if (!llm || deviceStatus?.status !== 'available') throw new Error('On-device AI unavailable');
+  // Guided generation constrains Apple's model to the schema. Gemini Nano only has
+  // prompt-level JSON, so describe the shape and validate afterwards.
+  const guided = deviceStatus.backend === 'apple';
   const requestId = `req-${Date.now()}-${requestCounter++}`;
   return enqueue(async () => {
-    if (options.priority === 'background') runningBackground.add(requestId);
-    const sub = options.onPartial
+    if (job.priority === 'background') runningDevice.add(requestId);
+    const sub = job.onPartial
       ? llm.addListener('onChunk', (e) => {
-          if (e.requestId === requestId) options.onPartial?.(e.text);
+          if (e.requestId === requestId) job.onPartial?.(e.text);
         })
       : null;
     try {
-      const text = await llm.generate({
+      return await llm.generate({
         requestId,
-        prompt: options.prompt,
-        system: options.system,
-        temperature: options.temperature,
-        maxTokens: options.maxTokens,
-        stream: !!options.onPartial,
+        prompt: job.schema && !guided ? withSchemaInPrompt(job.prompt, job.schema) : job.prompt,
+        system: job.system,
+        temperature: job.temperature,
+        maxTokens: job.maxTokens,
+        schemaJson: job.schema && guided ? JSON.stringify(job.schema) : undefined,
+        stream: !!job.onPartial && !job.schema,
       });
-      return text.trim();
     } finally {
       sub?.remove();
-      runningBackground.delete(requestId);
+      runningDevice.delete(requestId);
     }
-  }, options.priority);
+  }, job.priority);
+}
+
+const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+
+async function cloudEndpoint(provider: AiProvider): Promise<CloudEndpoint> {
+  if (provider === 'plus') return plusEndpoint();
+  const key = await loadOpenRouterKey();
+  if (!key) throw new Error('No OpenRouter API key');
+  return {
+    url: OPENROUTER_URL,
+    headers: { Authorization: `Bearer ${key}`, 'X-Title': 'Hablo' },
+    model: openRouterModel(),
+  };
+}
+
+async function runInCloud(job: Job, provider: AiProvider): Promise<string> {
+  if (job.priority === 'background' && runningCloud.size > 4) throw new Cancelled();
+  const epoch = backgroundEpoch;
+  const controller = new AbortController();
+  if (job.priority === 'background') runningCloud.add(controller);
+  try {
+    const endpoint = await cloudEndpoint(provider);
+    if (job.priority === 'background' && epoch !== backgroundEpoch) throw new Cancelled();
+    const text = await chatCompletion(endpoint, {
+      system: job.system,
+      prompt: job.schema ? withSchemaInPrompt(job.prompt, job.schema) : job.prompt,
+      temperature: job.temperature,
+      maxTokens: job.maxTokens,
+      json: !!job.schema,
+      signal: controller.signal,
+    });
+    job.onPartial?.(text);
+    return text;
+  } catch (e) {
+    if (controller.signal.aborted) throw new Cancelled();
+    throw e;
+  } finally {
+    runningCloud.delete(controller);
+  }
+}
+
+async function run(job: Job): Promise<string> {
+  const status = cachedAvailability;
+  if (!status || status.status !== 'available') throw new Error(status?.reason ?? 'AI unavailable');
+  if (!status.cloud) return runOnDevice(job);
+  try {
+    return await runInCloud(job, status.provider);
+  } catch (e) {
+    // Offline or the service is down: fall back to the on-device model when there is one.
+    if (e instanceof Cancelled || deviceStatus?.status !== 'available') throw e;
+    return runOnDevice(job);
+  }
+}
+
+/** Sends a tiny request with a key/model before saving them. Resolves to null on success, else an error message. */
+export async function testOpenRouter(key: string, model: string): Promise<string | null> {
+  try {
+    await chatCompletion(
+      { url: OPENROUTER_URL, headers: { Authorization: `Bearer ${key.trim()}`, 'X-Title': 'Hablo' }, model: model.trim() },
+      { prompt: 'Reply with the single word: ok', maxTokens: 5, temperature: 0 }
+    );
+    return null;
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
+  }
+}
+
+export async function generateText(options: GenerateTextOptions): Promise<string> {
+  const text = await run({ ...options });
+  return text.trim();
 }
 
 export async function generateJson<T>(options: GenerateJsonOptions<T>): Promise<T> {
-  const llm = OnDeviceLlm;
-  if (!llm || !isAiReady()) throw new Error('On-device AI unavailable');
-  const guided = cachedAvailability?.backend === 'apple';
-  // Guided generation constrains Apple's model to the schema. Gemini Nano only has
-  // prompt-level JSON, so describe the shape and validate afterwards.
-  const prompt = guided
-    ? options.prompt
-    : `${options.prompt}\n\nRespond with ONLY a JSON object (no markdown, no commentary) matching this JSON Schema:\n${JSON.stringify(options.schema)}`;
-
   let lastError: unknown = null;
   for (let attempt = 0; attempt < 2; attempt++) {
-    const requestId = `req-${Date.now()}-${requestCounter++}`;
     try {
-      const raw = await enqueue(async () => {
-        if (options.priority === 'background') runningBackground.add(requestId);
-        try {
-          return await llm.generate({
-            requestId,
-            prompt,
-            system: options.system,
-            temperature: options.temperature ?? (attempt === 0 ? 0.4 : 0.2),
-            maxTokens: options.maxTokens,
-            schemaJson: guided ? JSON.stringify(options.schema) : undefined,
-          });
-        } finally {
-          runningBackground.delete(requestId);
-        }
-      }, options.priority);
+      const raw = await run({
+        system: options.system,
+        prompt: options.prompt,
+        schema: options.schema,
+        temperature: options.temperature ?? (attempt === 0 ? 0.4 : 0.2),
+        maxTokens: options.maxTokens,
+        priority: options.priority,
+      });
       const parsed = options.parse(extractJson(raw));
       if (parsed) return parsed;
       lastError = new Error(`Model output did not match schema: ${raw.slice(0, 200)}`);
     } catch (e) {
       lastError = e;
-      if (e instanceof Error && e.message === 'Cancelled') break;
+      if (e instanceof Cancelled) break;
     }
   }
   throw lastError ?? new Error('Generation failed');

@@ -12,6 +12,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { dueCount } from '@/lib/cards';
 import { ratingProgress, ratingToCefr } from '@/lib/curriculum';
 import { openHomework } from '@/lib/homework';
+import { language, levelLabel } from '@/lib/languages';
 import {
   currentUnit,
   getProfile,
@@ -25,8 +26,7 @@ import {
 import { WEEKDAYS } from '@/lib/reminders';
 
 function greeting() {
-  const h = new Date().getHours();
-  return h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches';
+  return language().phrases.greeting(new Date().getHours());
 }
 
 export default function TodayScreen() {
@@ -72,7 +72,7 @@ export default function TodayScreen() {
         </Text>
         <Text variant="title">{unit.title}</Text>
         <Text variant="body" color="textSecondary">
-          {profile.sessionMinutes} focused minutes · {unit.cefr}
+          {profile.sessionMinutes} focused minutes · {language().name} {levelLabel(unit.cefr)}
         </Text>
         <View style={styles.plan}>
           {due > 0 ? <PlanLine icon={Icons.cards} text={`Review ${due} due card${due === 1 ? '' : 's'}`} /> : null}
@@ -130,7 +130,7 @@ export default function TodayScreen() {
       </Section>
 
       <Row gap={Spacing.two}>
-        <Stat label="Level" value={ratingToCefr(rating)} progress={ratingProgress(rating)} />
+        <Stat label="Level" value={levelLabel(ratingToCefr(rating))} progress={ratingProgress(rating)} />
         <Stat label="Hours" value={stats.totalHours.toFixed(1)} />
         <Stat label="Words" value={String(stats.wordsKnown)} />
       </Row>
@@ -176,18 +176,21 @@ export default function TodayScreen() {
       </Section>
 
       {ai && ai.status !== 'available' ? (
-        <Card tone="warningSoft">
-          <Row>
-            <Icon name={Icons.warning} color="warning" />
-            <Text variant="bodyStrong" style={styles.flex}>
-              AI tutor is off
+        <Pressable onPress={() => router.push('/ai')}>
+          <Card tone="warningSoft">
+            <Row>
+              <Icon name={Icons.warning} color="warning" />
+              <Text variant="bodyStrong" style={styles.flex}>
+                AI tutor is off
+              </Text>
+              <Icon name={Icons.chevronRight} color="textTertiary" />
+            </Row>
+            <Text variant="caption">
+              {ai.reason ?? 'The AI tutor is unavailable.'} Lessons still work with the built-in course. For
+              conversation practice and feedback, use on-device AI or a cloud model.
             </Text>
-          </Row>
-          <Text variant="caption">
-            {ai.reason ?? 'On-device AI is unavailable.'} Lessons still work with the built-in course; conversation
-            practice and AI feedback need Apple Intelligence or Gemini Nano.
-          </Text>
-        </Card>
+          </Card>
+        </Pressable>
       ) : null}
     </Screen>
   );

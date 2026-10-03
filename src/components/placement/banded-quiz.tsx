@@ -15,7 +15,7 @@ export type QuizQuestion = {
   prompt: ReactNode;
   options: string[];
   answerIndex: number;
-  /** Shown briefly after answering (e.g. the Spanish sentence for listening). */
+  /** Shown briefly after answering (e.g. the sentence for listening). */
   reveal?: ReactNode;
 };
 

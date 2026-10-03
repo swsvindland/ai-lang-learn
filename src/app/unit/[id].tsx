@@ -3,11 +3,13 @@ import { StyleSheet, View } from 'react-native';
 
 import { AudioButton } from '@/components/ui/controls';
 import { Card, Pill, ProgressBar, Row, Screen, Section } from '@/components/ui/layout';
+import { TargetText } from '@/components/ui/target-text';
 import { Text } from '@/components/ui/text';
 import { Spacing } from '@/constants/theme';
 import { useDbQuery } from '@/hooks/use-db-query';
 import { cardFor, vocabLabel } from '@/lib/cards';
 import { getUnit } from '@/lib/curriculum';
+import { levelLabel } from '@/lib/languages';
 import { grammarMastery, unitMastery, unitStatuses } from '@/lib/learner';
 import { isLearned } from '@/lib/srs';
 
@@ -35,10 +37,10 @@ export default function UnitScreen() {
 
   return (
     <Screen edges={[]}>
-      <Stack.Screen options={{ title: unit.cefr }} />
+      <Stack.Screen options={{ title: levelLabel(unit.cefr) }} />
       <View style={styles.header}>
         <Row>
-          <Pill label={`Unit ${unit.order} · ${unit.cefr}`} tone="primary" />
+          <Pill label={`Unit ${unit.order} · ${levelLabel(unit.cefr)}`} tone="primary" />
           <Pill label={data.status} tone={data.status === 'active' ? 'primary' : data.status === 'locked' ? 'accent' : 'success'} />
         </Row>
         <Text variant="title">{unit.title}</Text>
@@ -71,24 +73,25 @@ export default function UnitScreen() {
               {g.summary}
             </Text>
             {g.examples.slice(0, 2).map((ex) => (
-              <Row key={ex.es}>
+              <Row key={ex.text}>
                 <View style={styles.flex}>
-                  <Text variant="bodyStrong">{ex.es}</Text>
+                  <TargetText text={ex.text} reading={ex.reading} variant="bodyStrong" />
                   <Text variant="caption">{ex.en}</Text>
                 </View>
-                <AudioButton text={ex.es} size={34} showSlow={false} />
+                <AudioButton text={ex.text} size={34} showSlow={false} />
               </Row>
             ))}
           </Card>
         ))}
       </Section>
 
-      <Section title={`Vocabulary · ${unit.vocab.length} words`}>
+      <Section
+        title={`${unit.vocab.every((v) => v.pos === 'character') ? 'Characters' : 'Vocabulary'} · ${unit.vocab.length}`}>
         <Card style={styles.vocab}>
           {unit.vocab.map((v) => (
             <Row key={v.id} style={styles.word}>
               <View style={styles.flex}>
-                <Text variant="bodyStrong">{vocabLabel(v)}</Text>
+                <TargetText text={vocabLabel(v)} reading={v.reading} variant="bodyStrong" />
                 <Text variant="caption">{v.en}</Text>
               </View>
               {data.words[v.id] !== 'new' ? (

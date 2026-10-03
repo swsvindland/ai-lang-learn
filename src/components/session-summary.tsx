@@ -9,6 +9,7 @@ import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { resolveVocab, vocabLabel } from '@/lib/cards';
 import { getUnit, type Unit } from '@/lib/curriculum';
 import { getHomework } from '@/lib/homework';
+import { language } from '@/lib/languages';
 import { SKILL_LABELS, type Skill } from '@/lib/learner';
 import type { SessionSummary } from '@/lib/session/types';
 
@@ -31,7 +32,7 @@ export function SessionSummaryView({
     <ScrollView contentContainerStyle={styles.content}>
       <View style={styles.hero}>
         <Text variant="display" center>
-          ¡Buen trabajo!
+          {language().phrases.wellDone}
         </Text>
         <Text variant="body" color="textSecondary" center>
           {duration} of focused practice · {summary.activities} exercise{summary.activities === 1 ? '' : 's'}
@@ -86,7 +87,7 @@ export function SessionSummaryView({
       {newWords.length ? (
         <Section title="Words you met">
           <Card>
-            <Text variant="body">{newWords.map((v) => `${vocabLabel(v)} — ${v.en}`).join('\n')}</Text>
+            <Text variant="body">{newWords.map((v) => `${vocabLabel(v)}${v.reading ? ` (${v.reading})` : ''} — ${v.en}`).join('\n')}</Text>
           </Card>
         </Section>
       ) : null}

@@ -7,7 +7,8 @@ import { Icon, Icons, type IconName } from '@/components/ui/icon';
 import { Card, Row } from '@/components/ui/layout';
 import { Text } from '@/components/ui/text';
 import { Spacing } from '@/constants/theme';
-import { placementItems } from '@/lib/curriculum';
+import { course } from '@/lib/curriculum';
+import { language } from '@/lib/languages';
 import {
   buildListeningQuestions,
   buildVocabQuestions,
@@ -15,7 +16,7 @@ import {
   ratingFromBands,
   type BandTally,
 } from '@/lib/placement';
-import { speakSpanish } from '@/lib/speech';
+import { speak } from '@/lib/speech';
 
 import { BandedQuiz, type QuizQuestion } from './banded-quiz';
 
@@ -38,14 +39,16 @@ export function Diagnostic({ onDone }: { onDone: (scores: DiagnosticScores) => v
     prompt: (
       <>
         <Text variant="caption">What does this word mean?</Text>
-        <Text variant="spanish" style={styles.word}>
-          {q.vocab.es}
+        <Text variant="target" style={styles.word}>
+          {q.vocab.text}
         </Text>
+        {/* Placement tests vocabulary, not kanji, so the reading is always shown. */}
+        {q.vocab.reading ? <Text variant="body" color="textSecondary">{q.vocab.reading}</Text> : null}
       </>
     ),
   }));
 
-  const grammarQuiz: QuizQuestion[] = placementItems.map((p) => ({
+  const grammarQuiz: QuizQuestion[] = course().placementItems.map((p) => ({
     key: p.id,
     level: p.cefr,
     options: p.options,
@@ -65,12 +68,17 @@ export function Diagnostic({ onDone }: { onDone: (scores: DiagnosticScores) => v
     level: q.level,
     options: q.options,
     answerIndex: q.answerIndex,
-    prompt: <ListeningPrompt text={q.sentence.es} />,
+    prompt: <ListeningPrompt text={q.sentence.text} />,
     reveal: (
       <>
         <Text variant="bodyStrong" center>
-          {q.sentence.es}
+          {q.sentence.text}
         </Text>
+        {q.sentence.reading ? (
+          <Text variant="caption" center>
+            {q.sentence.reading}
+          </Text>
+        ) : null}
         <Text variant="caption" center>
           {q.sentence.en}
         </Text>
@@ -88,7 +96,7 @@ export function Diagnostic({ onDone }: { onDone: (scores: DiagnosticScores) => v
         <Card>
           <Part icon={Icons.cards} title="Vocabulary" text="Recognize common words" />
           <Part icon={Icons.graduation} title="Grammar & reading" text="Pick the right form" />
-          <Part icon={Icons.ear} title="Listening" text="Understand spoken Spanish" />
+          <Part icon={Icons.ear} title="Listening" text={`Understand spoken ${language().name}`} />
         </Card>
         <Card tone="accentSoft">
           <Text variant="bodyStrong">Tap &quot;I don&apos;t know&quot; instead of guessing.</Text>
@@ -152,7 +160,7 @@ export function Diagnostic({ onDone }: { onDone: (scores: DiagnosticScores) => v
 
 function ListeningPrompt({ text }: { text: string }) {
   useEffect(() => {
-    speakSpanish(text);
+    speak(text);
   }, [text]);
   return (
     <>
