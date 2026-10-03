@@ -1,12 +1,12 @@
 import type { Unit } from '../types';
 
-/** Japanese units 11–14 (JLPT N5, part 2). */
+/** Japanese units 7–10 (JLPT N5, part 2). */
 export const unitsN5b: Unit[] = [
   // ───────────────────────────── ja-n5-06 ─────────────────────────────
   {
     id: 'ja-n5-06',
     cefr: 'A1',
-    order: 11,
+    order: 7,
     title: 'どんな町ですか: Describing things',
     theme: 'Describing places, things, and people with adjectives',
     canDo: [
@@ -95,7 +95,7 @@ export const unitsN5b: Unit[] = [
   {
     id: 'ja-n5-07',
     cefr: 'A1',
-    order: 12,
+    order: 8,
     title: '好きなこと: Likes, wants, invitations',
     theme: 'Hobbies, likes and dislikes, wants, and making plans together',
     canDo: [
@@ -183,7 +183,7 @@ export const unitsN5b: Unit[] = [
   {
     id: 'ja-n5-08',
     cefr: 'A1',
-    order: 13,
+    order: 9,
     title: 'て形: Requests and ongoing actions',
     theme: 'Polite requests, classroom language, and actions in progress',
     canDo: [
@@ -272,7 +272,7 @@ export const unitsN5b: Unit[] = [
   {
     id: 'ja-n5-09',
     cefr: 'A1',
-    order: 14,
+    order: 10,
     title: 'レストランで: Eating out',
     theme: 'Ordering food, counting things, and saying how something was',
     canDo: [

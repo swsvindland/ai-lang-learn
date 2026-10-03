@@ -11,6 +11,7 @@ import { Spacing } from '@/constants/theme';
 import { vocabLabel } from '@/lib/cards';
 import { speak } from '@/lib/speech';
 
+import { kanjiSpeech } from './kanji-details';
 import { ActivityShell, type ActivityProps } from './shell';
 
 type Phase = 'ask' | 'confirm' | 'learn';
@@ -25,9 +26,11 @@ export function QuickCheckActivity({ activity, onDone }: ActivityProps<'quick-ch
   const label = vocabLabel(vocab);
   const [phase, setPhase] = useState<Phase>('ask');
 
+  const sound = vocab.kanji ? kanjiSpeech(vocab) : label;
+
   useEffect(() => {
-    speak(label);
-  }, [label]);
+    speak(sound);
+  }, [sound]);
 
   function finish(known: boolean) {
     onDone({
@@ -68,7 +71,7 @@ export function QuickCheckActivity({ activity, onDone }: ActivityProps<'quick-ch
           // For a kana character the romaji *is* the answer.
           aids={vocab.pos !== 'character' || phase !== 'ask'}
         />
-        <AudioButton text={label} size={48} />
+        <AudioButton text={sound} size={48} />
         {phase !== 'ask' ? (
           <View style={styles.answer}>
             <Text variant="title" center>

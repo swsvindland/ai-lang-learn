@@ -9,6 +9,7 @@ import { useDbQuery } from '@/hooks/use-db-query';
 import { useTheme } from '@/hooks/use-theme';
 import { CEFR_LEVELS, courseUnits, FLUENT_RATING, ratingToCefr } from '@/lib/curriculum';
 import { language, levelLabel } from '@/lib/languages';
+import { scriptProgress } from '@/lib/script';
 import {
   getProfile,
   getSkills,
@@ -32,9 +33,14 @@ export default function JourneyScreen() {
       statuses,
       activeMastery: active ? unitMastery(active).overall : 0,
       profile: getProfile(),
+      reading: scriptProgress(),
     };
   });
-  const { skills, rating, stats, statuses, activeMastery, profile } = data;
+  const { skills, rating, stats, statuses, activeMastery, profile, reading } = data;
+  // Show kanji levels up to the first one not yet started, so the list grows with the learner.
+  const visibleReading = reading.filter(
+    (r, i) => r.script !== 'kanji' || r.introduced > 0 || reading.findIndex((x) => x.script === 'kanji') === i
+  );
   const lang = language();
   const hours = lang.hoursToReach;
   const level = ratingToCefr(rating);
@@ -102,6 +108,27 @@ export default function JourneyScreen() {
           </Text>
         </Card>
       </Row>
+
+      {visibleReading.length ? (
+        <Section title="Reading">
+          <Card>
+            {visibleReading.map((r) => (
+              <View key={r.label} style={styles.skill}>
+                <Row style={styles.between}>
+                  <Text variant="bodyStrong">{r.label}</Text>
+                  <Text variant="caption">
+                    {r.known} known · {r.introduced} met · {r.total}
+                  </Text>
+                </Row>
+                <ProgressBar value={r.known / r.total} height={6} />
+              </View>
+            ))}
+            <Text variant="caption">
+              A few new characters every session, alongside speaking. Romaji and furigana fade for each one you know.
+            </Text>
+          </Card>
+        </Section>
+      ) : null}
 
       <Section title="Skills">
         <Card>

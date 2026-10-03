@@ -54,6 +54,38 @@ export type VocabItem = {
   pos: PartOfSpeech;
   gender?: 'm' | 'f';
   example: Sentence;
+  /** Set on kanji in the reading track. */
+  kanji?: KanjiInfo;
+};
+
+export type KanjiInfo = {
+  /** On'yomi (Chinese-derived readings), in katakana. */
+  on: string[];
+  /** Kun'yomi (native readings) in KANJIDIC style: okurigana after a dot, affixes marked with '-'. */
+  kun: string[];
+  strokes: number;
+  /** JLPT level, 5 (N5) … 1 (N1). */
+  jlpt: number;
+  /** Course words that use this kanji, earliest first. */
+  examples: Sentence[];
+};
+
+/** A kanji as bundled in kanji.json (KANJIDIC subset). */
+export type KanjiEntry = { k: string; l: number; s: number; f: number; m: string[]; on: string[]; kun: string[] };
+
+export type ScriptName = 'hiragana' | 'katakana' | 'kanji';
+
+/**
+ * A batch of characters in the reading track, which runs alongside the main
+ * units so learners can speak from day one while learning to read.
+ */
+export type ScriptGroup = {
+  id: string;
+  title: string;
+  script: ScriptName;
+  /** Explanations shown before the group's first character is introduced. */
+  lessons: GrammarPoint[];
+  items: VocabItem[];
 };
 
 /** A role-play the AI runs as the unit's conversation practice. */
@@ -116,4 +148,6 @@ export type CourseContent = {
   units: Unit[];
   placementItems: PlacementItem[];
   mediaCatalog: MediaItem[];
+  /** Writing-system track for languages that need one (Japanese). */
+  script?: { kana: ScriptGroup[]; kanji: KanjiEntry[] };
 };

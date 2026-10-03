@@ -181,6 +181,7 @@ const japanese: LanguageInfo = {
     rules: [
       'Write natural standard Japanese with Japanese punctuation (。、？！). Use polite です/ます style unless the situation is casual between friends.',
       'Only use kanji the learner should know at their level; write harder words in hiragana. Never write romaji inside Japanese text.',
+      'The learner may type in romaji or kana while they learn to read; understand it as Japanese and answer in Japanese.',
     ],
     levelGuide: {
       A1: 'very short, simple sentences in polite です/ます form with JLPT N5 words, mostly hiragana with only the most basic kanji',

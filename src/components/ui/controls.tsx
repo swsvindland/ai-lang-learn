@@ -54,11 +54,14 @@ export type ChoiceState = 'idle' | 'selected' | 'correct' | 'incorrect' | 'dimme
 
 export function ChoiceOption({
   label,
+  hint,
   state,
   onPress,
   disabled,
 }: {
   label: string;
+  /** Small line under the label, e.g. romaji for a kana answer. */
+  hint?: string;
   state: ChoiceState;
   onPress: () => void;
   disabled?: boolean;
@@ -80,9 +83,12 @@ export function ChoiceOption({
         styles.choice,
         { backgroundColor: palette.bg, borderColor: palette.border, opacity: pressed ? 0.85 : 1 },
       ]}>
-      <Text variant="bodyStrong" style={{ color: palette.fg, flex: 1 }}>
-        {label}
-      </Text>
+      <View style={styles.choiceText}>
+        <Text variant="bodyStrong" style={{ color: palette.fg }}>
+          {label}
+        </Text>
+        {hint ? <Text variant="caption">{hint}</Text> : null}
+      </View>
       {state === 'correct' ? <Icon name={Icons.checkCircle} color="success" /> : null}
       {state === 'incorrect' ? <Icon name={Icons.xCircle} color="error" /> : null}
     </Pressable>
@@ -158,6 +164,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     minHeight: 54,
   },
+  choiceText: { flex: 1, gap: 2 },
   chip: {
     borderWidth: 1.5,
     borderRadius: Radius.pill,

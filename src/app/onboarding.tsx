@@ -17,6 +17,7 @@ import { courseUnits } from '@/lib/curriculum';
 import { courseHasProfile, selectCourse, startedCourses } from '@/lib/db';
 import { activeLanguageCode, language, LANGUAGE_CODES, LANGUAGES, type LanguageCode } from '@/lib/languages';
 import { initLearner, INTEREST_OPTIONS, profileOf, type Interest } from '@/lib/learner';
+import { queueScriptRefresh } from '@/lib/script';
 import {
   BACKGROUND_OPTIONS,
   LAST_USED_OPTIONS,
@@ -36,6 +37,7 @@ type Step =
   | 'lastUsed'
   | 'diagnostic'
   | 'results'
+  | 'script'
   | 'schedule'
   | 'interests'
   | 'ai';
@@ -58,6 +60,15 @@ const DEFAULT_DAYS: Record<number, number[]> = {
   6: [2, 3, 4, 5, 6, 7],
   7: [1, 2, 3, 4, 5, 6, 7],
 };
+
+type ScriptLevel = 'none' | 'hiragana' | 'kana' | 'kanji';
+
+const SCRIPT_OPTIONS: { value: ScriptLevel; label: string; detail: string }[] = [
+  { value: 'none', label: 'Not yet', detail: "You'll learn kana here, a few characters per session" },
+  { value: 'hiragana', label: 'Hiragana', detail: 'Katakana and kanji are still new' },
+  { value: 'kana', label: 'Hiragana and katakana', detail: 'Kanji are still new' },
+  { value: 'kanji', label: 'Kana and basic kanji', detail: 'About the JLPT N5 kanji' },
+];
 
 const TIMES = [
   { label: 'Morning · 8:00', h: 8, m: 0 },
@@ -89,6 +100,12 @@ export default function Onboarding() {
   );
   const [interests, setInterests] = useState<Interest[]>(previous?.interests ?? []);
   const [preparing, setPreparing] = useState(false);
+  const [scriptLevel, setScriptLevel] = useState<ScriptLevel>('none');
+
+  // Languages with their own script ask what the learner can already read.
+  function afterPlacement() {
+    setStep(lang.readings && background !== 'none' ? 'script' : 'schedule');
+  }
 
   function chooseLanguage(code: LanguageCode) {
     // Picking a language that's already set up just opens it.
@@ -112,12 +129,19 @@ export default function Onboarding() {
       interests,
       slowAudio: previous?.slowAudio ?? false,
       background,
-      showReadings: true,
-      // Romaji helps absolute beginners until they've learned kana.
-      showRomaji: lang.readings && background === 'none',
+      // Aids fade on their own as the reading track teaches each character.
+      furigana: 'auto' as const,
+      romaji: 'auto' as const,
       createdAt: Date.now(),
     };
     initLearner(profile, chosen);
+    if (scriptLevel !== 'none') {
+      // Characters they say they can read get a quick check instead of being taught again.
+      queueScriptRefresh(
+        scriptLevel === 'hiragana' ? ['hiragana'] : ['hiragana', 'katakana'],
+        scriptLevel === 'kanji' ? [5] : []
+      );
+    }
     syncReminders(profile);
   }
 
@@ -272,13 +296,38 @@ export default function Onboarding() {
         <PlacementResults
           result={result}
           plan={plan}
-          onContinue={() => setStep('schedule')}
+          onContinue={afterPlacement}
           onStartOver={() => {
             // Keep the measured skill levels; only the starting unit changes.
             setPlan({ ...plan, startUnit: courseUnits()[0], skippedUnits: [], refreshWords: 0 });
-            setStep('schedule');
+            afterPlacement();
           }}
         />
+      ) : null}
+
+      {step === 'script' ? (
+        <>
+          <Text variant="title">Can you already read Japanese?</Text>
+          <Text variant="body" color="textSecondary">
+            You&apos;ll speak and listen from the first session either way. Reading is taught alongside: romaji and
+            furigana appear under words until you&apos;ve learned their characters.
+          </Text>
+          <View style={styles.options}>
+            {SCRIPT_OPTIONS.map((o) => (
+              <Pressable
+                key={o.value}
+                onPress={() => {
+                  setScriptLevel(o.value);
+                  setStep('schedule');
+                }}>
+                <Card>
+                  <Text variant="bodyStrong">{o.label}</Text>
+                  <Text variant="caption">{o.detail}</Text>
+                </Card>
+              </Pressable>
+            ))}
+          </View>
+        </>
       ) : null}
 
       {step === 'schedule' ? (

@@ -17,10 +17,17 @@ import {
   getProfile,
   INTEREST_OPTIONS,
   updateProfile,
+  type AidMode,
   type Interest,
   type Profile,
 } from '@/lib/learner';
 import { syncReminders, WEEKDAYS } from '@/lib/reminders';
+
+const AID_OPTIONS: { value: AidMode; label: string }[] = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'always', label: 'Always' },
+  { value: 'off', label: 'Off' },
+];
 
 const TIMES = Array.from({ length: 34 }, (_, i) => {
   const minutes = 6 * 60 + i * 30;
@@ -164,14 +171,27 @@ function SettingsForm({ profile }: { profile: Profile }) {
 
           {lang.readings ? (
             <FieldGroup.Section title="Reading aids">
-              <Switch
-                label="Furigana over kanji"
-                value={profile.showReadings}
-                onValueChange={(v) => save({ showReadings: v })}
-              />
-              <Switch label="Romaji" value={profile.showRomaji} onValueChange={(v) => save({ showRomaji: v })} />
+              <Row alignment="center">
+                <Text textStyle={{ color: textColor }}>Furigana over kanji</Text>
+                <Spacer flexible />
+                <Picker selectedValue={profile.furigana} onValueChange={(v: AidMode) => save({ furigana: v })}>
+                  {AID_OPTIONS.map((o) => (
+                    <Picker.Item key={o.value} label={o.label} value={o.value} />
+                  ))}
+                </Picker>
+              </Row>
+              <Row alignment="center">
+                <Text textStyle={{ color: textColor }}>Romaji under words</Text>
+                <Spacer flexible />
+                <Picker selectedValue={profile.romaji} onValueChange={(v: AidMode) => save({ romaji: v })}>
+                  {AID_OPTIONS.map((o) => (
+                    <Picker.Item key={o.value} label={o.label} value={o.value} />
+                  ))}
+                </Picker>
+              </Row>
               <Text textStyle={{ color: secondary, fontSize: 13 }}>
-                Romaji helps while you learn kana. Turn it off once you can read hiragana and katakana.
+                Auto shows romaji under a word until you know all its kana, and furigana over a kanji until you know
+                it, so the help fades as you learn to read.
               </Text>
             </FieldGroup.Section>
           ) : null}
@@ -238,6 +258,15 @@ function SettingsForm({ profile }: { profile: Profile }) {
           {__DEV__ ? (
             <FieldGroup.Section title="Developer">
               <Button label="Activity gallery" variant="text" onPress={() => router.push('/dev')} />
+            </FieldGroup.Section>
+          ) : null}
+
+          {lang.readings ? (
+            <FieldGroup.Section title="Credits">
+              <Text textStyle={{ color: secondary, fontSize: 13 }}>
+                Kanji meanings and readings: KANJIDIC, © Electronic Dictionary Research and Development Group, CC
+                BY-SA 4.0. JLPT kanji lists: Jonathan Waller (tanos.co.uk).
+              </Text>
             </FieldGroup.Section>
           ) : null}
 

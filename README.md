@@ -22,15 +22,23 @@ Unlike streak apps, Hablo is built around **~25 minutes of focused study, 2–5 
   role-play scenarios, plus a 30-item adaptive placement check and a catalog of real media. The AI writes content
   *within* this syllabus rather than inventing the course.
   - **Spanish** (`es/`): 34 units from A1 to C1, 645 words, 68 grammar points, 60 media items.
-  - **Japanese** (`ja/`): 35 units, 718 items, 70 grammar points, 50 media items. Five kana units teach hiragana and
-    katakana as flashcards, then units follow JLPT N5 to N1. Every sentence carries a spaced kana `reading`, used for
-    furigana, romaji, and answer checking.
+  - **Japanese** (`ja/`): speaking first, reading alongside.
+    - **Spoken course:** 31 units, 600 words, 62 grammar points, from greetings to JLPT N1. Every sentence carries a
+      spaced kana `reading`, used for furigana, romaji, and answer checking.
+    - **Reading track** (`src/lib/script.ts`): runs inside every session. It teaches hiragana, katakana (`script-kana.ts`,
+      129 characters with lessons and drills), then the 2,211 JLPT kanji (`kanji.json`, from KANJIDIC; see
+      `ja/ATTRIBUTION.md`). Kanji are ordered by when the course's words first need them. Practice includes reading
+      words you can already say, written in the characters you just learned.
+    - **Reading aids:** romaji under each word and furigana over kanji. On "auto" (the default), each aid disappears
+      once you know its characters solidly.
   - `node scripts/validate-course.ts` checks the structure: ids, drills, and that each reading lines up with its text.
 - **Learner model** (`src/lib/learner.ts`):
   - Elo-style ratings per skill (vocab, grammar, listening, speaking, reading, writing) on a 0–600 scale that maps onto CEFR.
   - Per-unit mastery that decides when the next unit unlocks.
   - Study hours, from lessons plus logged homework.
-- **SRS** (`src/lib/srs.ts`): an SM-2 variant with minute-level learning steps inside a session and day-level review intervals.
+- **SRS** (`src/lib/srs.ts`): an SM-2 variant with minute-level learning steps inside a session and day-level review
+  intervals. New words and characters are drilled in the session that introduces them. Intake slows automatically
+  when the review backlog grows.
 - **AI tutor** (`src/lib/ai`): role-plays, grading free answers, grammar Q&A, reading passages and homework planning.
   Three providers, chosen in **Settings → AI tutor**:
   - **On-device** (`modules/on-device-llm`, the default; free and private).

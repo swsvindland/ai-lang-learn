@@ -3,6 +3,7 @@ import { isAiReady } from '@/lib/ai/llm';
 import {
   dueCards,
   dueCount,
+  dueLearningCards,
   introduceVocab,
   isIntroduced,
   knownVocab,
@@ -12,7 +13,9 @@ import {
   type CardRow,
 } from '@/lib/cards';
 import {
+  course,
   courseUnits,
+  getScriptEntry,
   ratingToCefr,
   unitDifficulty,
   type Cefr,
@@ -20,7 +23,9 @@ import {
   type GrammarPoint,
   type Sentence,
   type Unit,
+  type VocabItem,
 } from '@/lib/curriculum';
+import { hasKanji, romajiFor, stripPunctuation } from '@/lib/japanese';
 import { run, uid } from '@/lib/db';
 import {
   currentUnit,
@@ -38,6 +43,7 @@ import {
   weakestSkills,
   type Skill,
 } from '@/lib/learner';
+import { isScriptItem, lessonBefore, nextScriptItems, scriptKnowledge, seenLessons, type ScriptKnowledge } from '@/lib/script';
 import type { Grade } from '@/lib/srs';
 import { pick, sample, sentenceLength, shuffle } from '@/lib/text';
 
@@ -68,6 +74,7 @@ export class SessionEngine {
 
   private interests: string[];
   private newWordLimit: number;
+  private backlog = 0;
   private newWords: string[] = [];
   private reviewed = 0;
   private results: ActivityResult[] = [];
@@ -81,6 +88,12 @@ export class SessionEngine {
   private readingUsed = false;
   private conversationDone = false;
   private lastPracticeKind: PracticeKind | null = null;
+  // Reading track
+  private readQueue: Activity[] = [];
+  private readPrepared = false;
+  private readNew: string[] = [];
+  private readSincePractice = 0;
+  private usedReadWords = new Set<string>();
 
   constructor(readonly mode: 'full' | 'review' = 'full') {
     const profile = getProfile();
@@ -96,12 +109,21 @@ export class SessionEngine {
       : this.level === 'A1'
         ? 10
         : 8;
-    this.newWordLimit = Math.max(6, Math.round((this.targetMinutes / 25) * perSession));
+    this.backlog = dueCount();
+    this.newWordLimit = Math.max(2, Math.round((this.targetMinutes / 25) * perSession * this.intake()));
     this.blocks = this.planBlocks();
     run(
       `INSERT INTO sessions (id, started_at, target_minutes, unit_id, status) VALUES (?, ?, ?, ?, 'active')`,
       [this.id, Date.now(), this.mode === 'review' ? 10 : this.targetMinutes, this.unit.id]
     );
+  }
+
+  /**
+   * How much new material to take on: a growing review backlog means new cards
+   * are arriving faster than they're being learned, so slow down until it clears.
+   */
+  private intake() {
+    return this.backlog > 150 ? 0.25 : this.backlog > 80 ? 0.5 : 1;
   }
 
   /** Divide the session into timed blocks; skip what can't run and give its time to practice. */
@@ -111,7 +133,20 @@ export class SessionEngine {
     }
     const total = this.targetMinutes * 60;
     const due = dueCount();
-    const shares: Record<BlockKind, number> = { review: 0.2, refresh: 0, learn: 0.25, practice: 0.33, converse: 0.22 };
+    const shares: Record<BlockKind, number> = {
+      review: 0.2,
+      refresh: 0,
+      read: 0,
+      learn: 0.25,
+      practice: 0.33,
+      converse: 0.22,
+    };
+    if (course().scriptTrack.length) {
+      // Learning to read runs alongside speaking: a slice of every session goes to kana, then kanji.
+      shares.read = 0.15;
+      shares.learn -= 0.05;
+      shares.practice -= 0.1;
+    }
     const refresh = refreshProgress();
     if (refresh.pending > 0) {
       // Returning learners: win back faded vocabulary fast before new material.
@@ -122,6 +157,10 @@ export class SessionEngine {
     if (due === 0) {
       shares.practice += shares.review;
       shares.review = 0;
+    } else if (due > 80) {
+      // Catch up on reviews before they pile up further.
+      shares.review += 0.1;
+      shares.practice -= 0.1;
     } else if (due < 15) {
       const spare = shares.review / 2;
       shares.review -= spare;
@@ -132,14 +171,16 @@ export class SessionEngine {
       shares.practice += shares.converse;
       shares.converse = 0;
     }
+    const nextScript = shares.read ? nextScriptItems(1, this.unit.order, scriptKnowledge().introducedIds)[0] : undefined;
     const titles: Record<BlockKind, string> = {
       review: 'Warm-up review',
       refresh: 'Refresh what you know',
+      read: nextScript ? `Reading: ${nextScript.group.script}` : 'Reading practice',
       learn: `New: ${this.unit.title}`,
       practice: 'Practice',
       converse: 'Conversation',
     };
-    return (['review', 'refresh', 'learn', 'practice', 'converse'] as const)
+    return (['review', 'refresh', 'read', 'learn', 'practice', 'converse'] as const)
       .filter((k) => shares[k] > 0)
       .map((kind) => ({ kind, title: titles[kind], budgetSeconds: Math.round(total * shares[kind]) }));
   }
@@ -243,6 +284,8 @@ export class SessionEngine {
         return this.nextFlashcard();
       case 'refresh':
         return this.nextRefresh();
+      case 'read':
+        return this.nextRead();
       case 'learn':
         return this.nextLearn();
       case 'practice':
@@ -274,7 +317,7 @@ export class SessionEngine {
 
   private nextRefresh(): Activity | null {
     // Words marked "don't know" become learning cards; drill them between checks.
-    const learning = this.learningCardFor(this.newWords);
+    const learning = this.learningCardFor([...this.newWords, ...this.readNew]);
     if (learning && this.results.length % 3 === 0) return learning;
     const [vocabId] = nextRefreshWords(1, this.refreshSeen);
     if (!vocabId) return learning;
@@ -287,13 +330,105 @@ export class SessionEngine {
     return { kind: 'quick-check', vocab: resolved.vocab, difficulty: resolved.difficulty };
   }
 
-  /** A due learning-step card for one of `vocabIds`, if any. */
+  /** A due card still in its learning steps for one of `vocabIds`, if any. */
   private learningCardFor(vocabIds: string[]): Activity | null {
     if (!vocabIds.length) return null;
-    const [card] = dueCards(30, Date.now(), this.recentCardIds.slice(-3)).filter(
-      (c) => (c.state === 'learning' || c.state === 'relearning') && vocabIds.includes(c.vocab_id)
-    );
+    // Just-introduced cards are still 'new'; they need their first drill now, not after the review backlog.
+    const [card] = dueLearningCards(vocabIds, Date.now(), this.recentCardIds.slice(-3));
     return card ? this.flashcardFor(card) : null;
+  }
+
+  // ---------- Reading track ----------
+
+  private prepareRead() {
+    this.readPrepared = true;
+    const { introducedIds } = scriptKnowledge();
+    const upcoming = nextScriptItems(1, this.unit.order, introducedIds)[0];
+    // Kana are quick to pick up; kanji need more attention each.
+    const base = (this.targetMinutes / 25) * (upcoming?.group.script === 'kanji' ? 5 : 8);
+    const perSession = Math.max(2, Math.round(base * this.intake()));
+    const seen = new Set(introducedIds);
+    const shown = new Set<string>();
+    for (const entry of nextScriptItems(perSession, this.unit.order, introducedIds)) {
+      const lesson = lessonBefore(entry, seen, shown);
+      if (lesson) {
+        shown.add(lesson.id);
+        this.readQueue.push({ kind: 'grammar', grammar: lesson, refresher: false, reading: true });
+      }
+      this.readQueue.push({ kind: 'introduce', vocab: entry.vocab, difficulty: resolveVocab(entry.vocab.id)?.difficulty ?? 10 });
+      seen.add(entry.vocab.id);
+    }
+  }
+
+  private nextRead(): Activity | null {
+    if (!this.readPrepared) this.prepareRead();
+    const block = this.currentBlock;
+    const budget = block?.budgetSeconds ?? 0;
+    const learning = this.learningCardFor(this.readNew);
+    if (learning && this.results.length % 2 === 0) return learning;
+    // Read real words after every few new characters, so each one is used right away.
+    if (this.readSincePractice >= 3) {
+      this.readSincePractice = 0;
+      const practice = this.readPractice();
+      if (practice) return practice;
+    }
+    if (this.readQueue.length && this.blockElapsed < budget + 60) {
+      const next = this.readQueue.shift()!;
+      if (next.kind === 'introduce') this.readSincePractice++;
+      return next;
+    }
+    if (learning) return learning;
+    return this.blockElapsed < budget ? this.readPractice() : null;
+  }
+
+  private readPractice(): Activity | null {
+    const knowledge = scriptKnowledge();
+    // Prefer real words; the fill-in-the-kana drills cover the early days when few words are readable.
+    const wordFirst = Math.random() < 0.65;
+    const first = wordFirst ? this.readWordActivity(knowledge) : this.readingDrill(knowledge);
+    return first ?? (wordFirst ? this.readingDrill(knowledge) : this.readWordActivity(knowledge));
+  }
+
+  /** A word from the spoken course the learner can now read: everything in it is a character they've met. */
+  private readWordActivity(knowledge: ScriptKnowledge): Activity | null {
+    const words = courseUnits()
+      .filter((u) => u.order <= this.unit.order + 1)
+      .flatMap((u) => u.vocab)
+      .filter((v) => v.pos !== 'character');
+    const readable = words.filter(
+      (v) => !this.usedReadWords.has(v.id) && [...stripPunctuation(v.text)].every((c) => knowledge.readable.has(c))
+    );
+    if (!readable.length) return null;
+    const fresh = new Set(this.readNew.map((id) => getScriptEntry(id)?.vocab.text ?? ''));
+    const featuring = readable.filter((v) => [...v.text].some((c) => fresh.has(c)));
+    const vocab = pick(featuring.length ? featuring : readable);
+    this.usedReadWords.add(vocab.id);
+    const askMeaning = hasKanji(vocab.text) ? Math.random() < 0.5 : Math.random() < 0.3;
+    const ask = askMeaning ? 'meaning' : 'sound';
+    const answerOf = (v: VocabItem) => (ask === 'meaning' ? v.en : romajiFor(v.reading ?? v.text));
+    const answer = answerOf(vocab);
+    const others = [...new Set(words.filter((v) => v.id !== vocab.id).map(answerOf))].filter((o) => o !== answer);
+    // Sounds of similar length make the choice about reading, not guessing by size.
+    const distractors =
+      ask === 'sound'
+        ? sample(others.sort((a, b) => Math.abs(a.length - answer.length) - Math.abs(b.length - answer.length)).slice(0, 8), 3)
+        : sample(others, 3);
+    if (distractors.length < 2) return null;
+    const options = shuffle([answer, ...distractors]);
+    return { kind: 'read-word', vocab, ask, options, answerIndex: options.indexOf(answer) };
+  }
+
+  /** A fill-in drill from a writing-system lesson the learner has seen, whose answer they've met. */
+  private readingDrill(knowledge: ScriptKnowledge): Activity | null {
+    const candidates = seenLessons().flatMap((lesson) =>
+      lesson.drills
+        .filter((d) => !this.usedDrills.has(d.text) && [...d.answer].every((c) => knowledge.readable.has(c)))
+        .map((drill) => ({ drill, lesson }))
+    );
+    if (!candidates.length) return null;
+    const { drill, lesson } = pick(candidates);
+    this.usedDrills.add(drill.text);
+    return clozeActivity(drill, lesson.id, 'reading');
   }
 
   private prepareLearnQueue() {
@@ -452,9 +587,11 @@ export class SessionEngine {
       reviewCard(activity.card, grade ?? (result.score >= 0.7 ? 3 : 1));
       this.reviewed++;
     }
+    // Reading-track characters are tracked apart from words (summary, learning-card pools).
+    const learned = (id: string) => (isScriptItem(id) ? this.readNew : this.newWords).push(id);
     if (activity.kind === 'introduce') {
       introduceVocab(activity.vocab.id);
-      this.newWords.push(activity.vocab.id);
+      learned(activity.vocab.id);
     }
     if (activity.kind === 'quick-check') {
       const known = result.score >= 0.5;
@@ -463,7 +600,7 @@ export class SessionEngine {
         markKnownVocab(activity.vocab.id);
       } else {
         introduceVocab(activity.vocab.id);
-        this.newWords.push(activity.vocab.id);
+        learned(activity.vocab.id);
       }
     }
     if (activity.kind === 'grammar') {
@@ -504,6 +641,7 @@ export class SessionEngine {
       activities: scored.length,
       averageScore: scored.length ? scored.reduce((s, r) => s + r.score, 0) / scored.length : 0,
       newWords: this.newWords,
+      newCharacters: this.readNew.map((id) => getScriptEntry(id)?.vocab.text ?? '').filter(Boolean),
       reviewed: this.reviewed,
       skills,
       unitAdvancedTo: advanced?.id ?? null,
@@ -526,15 +664,16 @@ export class SessionEngine {
   }
 }
 
-function clozeActivity(drill: ClozeDrill, grammarId: string): Activity {
+function clozeActivity(drill: ClozeDrill, grammarId: string, skill?: Skill): Activity {
   const options = shuffle([drill.answer, ...drill.distractors.slice(0, 3)]);
-  return { kind: 'cloze', drill, grammarId, options };
+  return { kind: 'cloze', drill, grammarId, options, skill };
 }
 
 function activityDifficulty(activity: Activity, unit: Unit) {
   if (activity.kind === 'flashcard' || activity.kind === 'introduce' || activity.kind === 'quick-check') {
     return activity.difficulty;
   }
+  if (activity.kind === 'read-word') return resolveVocab(activity.vocab.id)?.difficulty ?? unitDifficulty(unit);
   if (activity.kind === 'cloze') {
     const owner = courseUnits().find((u) => u.grammar.some((g) => g.id === activity.grammarId));
     return unitDifficulty(owner ?? unit);

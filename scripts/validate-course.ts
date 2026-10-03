@@ -11,13 +11,25 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import type { Cefr, ClozeDrill, MediaItem, PlacementItem, Sentence, Unit } from '../src/lib/curriculum/types.ts';
+import type {
+  Cefr,
+  ClozeDrill,
+  KanjiEntry,
+  MediaItem,
+  PlacementItem,
+  ScriptGroup,
+  Sentence,
+  Unit,
+} from '../src/lib/curriculum/types.ts';
 import { alignFurigana, hasKanji, isAllKana, kataToHira, stripPunctuation } from '../src/lib/japanese/furigana.ts';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const CURRICULUM = path.join(ROOT, 'src/lib/curriculum');
 
-const COURSES: Record<string, { readings: boolean; units: string[]; placement: string; media: string }> = {
+const COURSES: Record<
+  string,
+  { readings: boolean; units: string[]; placement: string; media: string; kana?: string; kanji?: string }
+> = {
   es: {
     readings: false,
     units: ['es/units-a.ts', 'es/units-b.ts', 'es/units-c.ts'],
@@ -27,7 +39,7 @@ const COURSES: Record<string, { readings: boolean; units: string[]; placement: s
   ja: {
     readings: true,
     units: [
-      'ja/units-kana.ts',
+      'ja/units-intro.ts',
       'ja/units-n5a.ts',
       'ja/units-n5b.ts',
       'ja/units-n4a.ts',
@@ -37,6 +49,8 @@ const COURSES: Record<string, { readings: boolean; units: string[]; placement: s
     ],
     placement: 'ja/placement.ts',
     media: 'ja/media.ts',
+    kana: 'ja/script-kana.ts',
+    kanji: 'ja/kanji.json',
   },
 };
 
@@ -227,6 +241,50 @@ function checkMedia(items: MediaItem[]) {
   console.log(`  ${items.length} media items`);
 }
 
+function checkKana(groups: ScriptGroup[]) {
+  const ids = new Set<string>();
+  const chars = new Set<string>();
+  for (const g of groups) {
+    const where = `kana group ${g.id}`;
+    if (ids.has(g.id)) error(where, 'duplicate id');
+    ids.add(g.id);
+    if (g.script !== 'hiragana' && g.script !== 'katakana') error(where, `bad script ${g.script}`);
+    if (!g.lessons?.length) error(where, 'no lessons');
+    for (const lesson of g.lessons ?? []) {
+      const lw = `${where} lesson ${lesson.id}`;
+      if (ids.has(lesson.id)) error(lw, 'duplicate id');
+      ids.add(lesson.id);
+      lesson.examples.forEach((e, i) => checkSentence(`${lw} example ${i + 1}`, e, true));
+      lesson.drills.forEach((d, i) => checkDrill(`${lw} drill ${i + 1}`, d, true));
+    }
+    for (const v of g.items ?? []) {
+      const vw = `${where} item ${v.id}`;
+      if (ids.has(v.id)) error(vw, 'duplicate id');
+      ids.add(v.id);
+      if (v.pos !== 'character') error(vw, 'kana items must be characters');
+      if (chars.has(v.text)) error(vw, `"${v.text}" appears twice`);
+      chars.add(v.text);
+      checkSentence(`${vw} example`, v.example, true);
+    }
+  }
+  console.log(`  ${chars.size} kana in ${groups.length} groups`);
+}
+
+function checkKanji(file: string) {
+  const entries = JSON.parse(fs.readFileSync(path.resolve(CURRICULUM, file), 'utf8')) as KanjiEntry[];
+  const seen = new Set<string>();
+  for (const e of entries) {
+    const where = `kanji ${e.k}`;
+    if ([...e.k].length !== 1 || !hasKanji(e.k)) error(where, 'not a single kanji');
+    if (seen.has(e.k)) error(where, 'duplicate');
+    seen.add(e.k);
+    if (!(e.l >= 1 && e.l <= 5)) error(where, `bad JLPT level ${e.l}`);
+    if (!e.m?.length) error(where, 'no meanings');
+    if (!e.on?.length && !e.kun?.length) error(where, 'no readings');
+  }
+  console.log(`  ${entries.length} kanji`);
+}
+
 async function main() {
   const [lang, ...files] = process.argv.slice(2);
   const codes = lang ? [lang] : Object.keys(COURSES);
@@ -243,6 +301,8 @@ async function main() {
     checkUnits(units, course.readings, true);
     checkPlacement(await exportedArrays<PlacementItem>(course.placement));
     checkMedia(await exportedArrays<MediaItem>(course.media));
+    if (course.kana) checkKana(await exportedArrays<ScriptGroup>(course.kana));
+    if (course.kanji) checkKanji(course.kanji);
   }
   console.log(`\n${errors} error(s), ${warnings} warning(s)`);
   process.exit(errors ? 1 : 0);

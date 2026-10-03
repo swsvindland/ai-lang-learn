@@ -32,5 +32,7 @@ export function romajiFor(reading: string) {
       if (/^(こんにち|こんばん)は$/.test(core)) spoken = spoken.replace(/は(?=[^は]*$)/, 'わ');
       return toRomaji(spoken, { customRomajiMapping: ROMAJI_MAPPING });
     })
-    .join(' ');
+    .join(' ')
+    // Quotation brackets come out as curly quotes; the Japanese line already shows them.
+    .replace(/[‘’“”「」『』]/g, '');
 }

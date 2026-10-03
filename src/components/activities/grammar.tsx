@@ -14,7 +14,7 @@ import { explainGrammar, type GrammarAnswer } from '@/lib/ai/tutor';
 import { ActivityShell, ContinueButton, type ActivityProps } from './shell';
 
 export function GrammarActivity({ activity, onDone, level, aiReady }: ActivityProps<'grammar'>) {
-  const { grammar, refresher } = activity;
+  const { grammar, refresher, reading } = activity;
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState<GrammarAnswer | null>(null);
   const [failed, setFailed] = useState(false);
@@ -37,7 +37,7 @@ export function GrammarActivity({ activity, onDone, level, aiReady }: ActivityPr
 
   return (
     <ActivityShell
-      kicker={refresher ? 'Grammar refresher' : 'Grammar'}
+      kicker={reading ? 'Learning to read' : refresher ? 'Grammar refresher' : 'Grammar'}
       icon={Icons.graduation}
       footer={<ContinueButton onPress={() => onDone({ skill: 'grammar', score: 1, ref: grammar.id, noAttempt: true })} />}>
       <Text variant="title">{grammar.title}</Text>
@@ -53,7 +53,7 @@ export function GrammarActivity({ activity, onDone, level, aiReady }: ActivityPr
           </Card>
         ))}
       </View>
-      {aiReady ? (
+      {aiReady && !reading ? (
         <Card tone="surfaceAlt">
           <Pill label="Ask your tutor" tone="primary" />
           <Input

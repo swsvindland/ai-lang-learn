@@ -1,12 +1,12 @@
 import type { Unit } from '../types';
 
-/** Japanese units 23–28 (JLPT N3). Normal adult kanji usage; readings are full kana. */
+/** Japanese units 19–24 (JLPT N3). Normal adult kanji usage; readings are full kana. */
 export const unitsN3: Unit[] = [
   // ───────────────────────────── N3 ─────────────────────────────
   {
     id: 'ja-n3-01',
     cefr: 'B1',
-    order: 23,
+    order: 19,
     title: '受身: The passive',
     theme: 'Saying what was done to you, and talking about bad luck and annoying events',
     canDo: [
@@ -88,7 +88,7 @@ export const unitsN3: Unit[] = [
   {
     id: 'ja-n3-02',
     cefr: 'B1',
-    order: 24,
+    order: 20,
     title: '使役: Making and letting',
     theme: 'Making and letting people do things, asking permission politely, and being made to do things',
     canDo: [
@@ -173,7 +173,7 @@ export const unitsN3: Unit[] = [
   {
     id: 'ja-n3-03',
     cefr: 'B1',
-    order: 25,
+    order: 21,
     title: '敬語: Honorific and humble language',
     theme: 'Showing respect with honorific and humble verbs in hotels, shops, and business',
     canDo: [
@@ -257,7 +257,7 @@ export const unitsN3: Unit[] = [
   {
     id: 'ja-n3-04',
     cefr: 'B1',
-    order: 26,
+    order: 22,
     title: '変化と決心: Change and decisions',
     theme: 'Talking about changes in ability and habits, efforts, and decisions made by you or for you',
     canDo: [
@@ -342,7 +342,7 @@ export const unitsN3: Unit[] = [
   {
     id: 'ja-n3-05',
     cefr: 'B1',
-    order: 27,
+    order: 23,
     title: 'のに・ても: Contrast and concession',
     theme: 'Expressing frustration and concession, and describing simultaneous or just-finished actions',
     canDo: [
@@ -427,7 +427,7 @@ export const unitsN3: Unit[] = [
   {
     id: 'ja-n3-06',
     cefr: 'B1',
-    order: 28,
+    order: 24,
     title: '意見を言う: Explaining and opinions',
     theme: 'Drawing conclusions, giving reasons, and stating opinions in a discussion',
     canDo: [

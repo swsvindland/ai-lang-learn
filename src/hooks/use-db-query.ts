@@ -28,6 +28,11 @@ function getVersion() {
   return version;
 }
 
+/** Bumps on every (coalesced) database change; lets derived data cache per change. */
+export function dbVersion() {
+  return version;
+}
+
 /**
  * Runs a synchronous query and re-runs it whenever any table changes.
  * The DB is small and local, so coarse invalidation keeps this simple. Pass

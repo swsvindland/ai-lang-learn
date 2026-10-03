@@ -1,5 +1,6 @@
 import {
   CEFR_LEVELS,
+  course,
   courseUnits,
   getGrammar,
   getUnit,
@@ -54,6 +55,13 @@ export const INTEREST_OPTIONS: { value: Interest; label: string }[] = [
   { value: 'kids', label: 'Kids content' },
 ];
 
+/** How a reading aid (furigana, romaji) is shown: always, never, or only until the characters are learned. */
+export type AidMode = 'auto' | 'always' | 'off';
+// Stored as 0/1/2 in the profile's show_readings / show_romaji columns.
+const AID_MODES: AidMode[] = ['off', 'always', 'auto'];
+const aidFromDb = (n: number) => AID_MODES[n] ?? 'auto';
+const aidToDb = (mode: AidMode) => AID_MODES.indexOf(mode);
+
 export type Profile = {
   name: string | null;
   startLevel: Cefr;
@@ -69,9 +77,9 @@ export type Profile = {
   /** Prior experience with the language from onboarding; used for pacing and AI context. */
   background: Background | null;
   /** Furigana over kanji (languages with readings). */
-  showReadings: boolean;
-  /** Romaji under Japanese text, for learners still getting comfortable with kana. */
-  showRomaji: boolean;
+  furigana: AidMode;
+  /** Romaji under each Japanese word. */
+  romaji: AidMode;
   createdAt: number;
 };
 
@@ -105,8 +113,8 @@ function toProfile(row: ProfileRow): Profile {
     interests: JSON.parse(row.interests),
     slowAudio: !!row.slow_audio,
     background: row.background,
-    showReadings: !!row.show_readings,
-    showRomaji: !!row.show_romaji,
+    furigana: aidFromDb(row.show_readings),
+    romaji: aidFromDb(row.show_romaji),
     createdAt: row.created_at,
   };
 }
@@ -147,8 +155,8 @@ export function saveProfile(p: Profile) {
       JSON.stringify(p.interests),
       p.slowAudio ? 1 : 0,
       p.background,
-      p.showReadings ? 1 : 0,
-      p.showRomaji ? 1 : 0,
+      aidToDb(p.furigana),
+      aidToDb(p.romaji),
       p.createdAt,
     ]
   );
@@ -432,7 +440,10 @@ export function studyStats() {
   const h = first<{ mins: number | null; count: number }>(
     `SELECT SUM(minutes_spent) AS mins, COUNT(*) AS count FROM homework WHERE status = 'done'`
   );
-  const words = first<{ n: number }>(`SELECT COUNT(DISTINCT vocab_id) AS n FROM cards WHERE state = 'review'`);
+  // Reading-track characters (kana, kanji) are counted on their own, not as words.
+  const { scriptById } = course();
+  const reviewed = all<{ vocab_id: string }>(`SELECT DISTINCT vocab_id FROM cards WHERE state = 'review'`);
+  const words = { n: reviewed.filter((r) => !scriptById.has(r.vocab_id)).length };
   const lessonHours = (s?.secs ?? 0) / 3600;
   const homeworkHours = (h?.mins ?? 0) / 60;
   return {

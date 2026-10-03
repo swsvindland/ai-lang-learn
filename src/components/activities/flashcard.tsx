@@ -14,6 +14,7 @@ import { language } from '@/lib/languages';
 import { speak } from '@/lib/speech';
 import type { Grade } from '@/lib/srs';
 
+import { KanjiDetails, kanjiSpeech } from './kanji-details';
 import { ActivityShell, type ActivityProps } from './shell';
 
 const GRADES: { grade: Grade; label: string; tone: 'error' | 'warning' | 'success' | 'accent' }[] = [
@@ -31,25 +32,31 @@ export function FlashcardActivity({ activity, onDone }: ActivityProps<'flashcard
   // Card directions are stored as 'es_en' (recognize) / 'en_es' (produce) for every language.
   const recognition = card.direction === 'es_en';
   const character = vocab.pos === 'character';
+  const kanji = !!vocab.kanji;
   const [revealed, setRevealed] = useState(false);
   const label = vocabLabel(vocab);
+  const sound = kanji ? kanjiSpeech(vocab) : label;
 
   useEffect(() => {
-    if (recognition) speak(label);
-  }, [recognition, label]);
+    if (recognition) speak(sound);
+  }, [recognition, sound]);
 
   function reveal() {
     setRevealed(true);
-    if (!recognition) speak(label);
+    if (!recognition) speak(sound);
   }
 
-  const kicker = character
+  const kicker = kanji
     ? recognition
-      ? 'Flashcard · How is it read?'
-      : 'Flashcard · Picture the character'
-    : recognition
-      ? 'Flashcard · What does it mean?'
-      : `Flashcard · Say it in ${language().name}`;
+      ? 'Kanji · What does it mean?'
+      : 'Kanji · Picture the kanji'
+    : character
+      ? recognition
+        ? 'Flashcard · How is it read?'
+        : 'Flashcard · Picture the character'
+      : recognition
+        ? 'Flashcard · What does it mean?'
+        : `Flashcard · Say it in ${language().name}`;
 
   return (
     <ActivityShell
@@ -99,14 +106,18 @@ export function FlashcardActivity({ activity, onDone }: ActivityProps<'flashcard
               style={character ? styles.big : undefined}
               aids={!character || revealed}
             />
-            <AudioButton text={label} size={48} />
+            {kanji ? null : <AudioButton text={sound} size={48} />}
           </>
         ) : (
           <>
             <Text variant="title" center>
               {vocab.en}
             </Text>
-            {character ? (
+            {kanji ? (
+              <Text variant="caption" center>
+                kanji · JLPT N{vocab.kanji?.jlpt}
+              </Text>
+            ) : character ? (
               // Romaji alone is ambiguous (ka → か or カ), so name the script and give the example's meaning.
               <Text variant="caption" center>
                 {/[\u30A0-\u30FF]/.test(vocab.text) ? 'katakana' : 'hiragana'} · as in “{vocab.example.en}”
@@ -114,7 +125,12 @@ export function FlashcardActivity({ activity, onDone }: ActivityProps<'flashcard
             ) : null}
           </>
         )}
-        {revealed ? (
+        {revealed && kanji ? (
+          <View style={[styles.answer, { borderTopColor: theme.border }]}>
+            {recognition ? null : <TargetText text={label} center color="primary" style={styles.big} aids={false} />}
+            <KanjiDetails vocab={vocab} />
+          </View>
+        ) : revealed ? (
           <View style={[styles.answer, { borderTopColor: theme.border }]}>
             {recognition ? (
               <Text variant="title" center>
@@ -147,10 +163,28 @@ export function IntroduceActivity({ activity, onDone }: ActivityProps<'introduce
   const { vocab } = activity;
   const label = vocabLabel(vocab);
   const character = vocab.pos === 'character';
+  const sound = vocab.kanji ? kanjiSpeech(vocab) : label;
 
   useEffect(() => {
-    speak(label);
-  }, [label]);
+    speak(sound);
+  }, [sound]);
+
+  if (vocab.kanji) {
+    return (
+      <ActivityShell
+        kicker="New kanji"
+        icon={Icons.sparkles}
+        footer={
+          <Button label="Got it" size="lg" onPress={() => onDone({ skill: 'reading', score: 1, ref: vocab.id, noAttempt: true })} />
+        }>
+        <Card style={styles.card}>
+          <Pill label={`JLPT N${vocab.kanji.jlpt}`} tone="accent" />
+          <TargetText text={label} center style={styles.huge} aids={false} />
+          <KanjiDetails vocab={vocab} />
+        </Card>
+      </ActivityShell>
+    );
+  }
 
   return (
     <ActivityShell
@@ -184,6 +218,7 @@ export function IntroduceActivity({ activity, onDone }: ActivityProps<'introduce
 const styles = StyleSheet.create({
   card: { alignItems: 'center', gap: Spacing.three, paddingVertical: Spacing.five },
   big: { fontSize: 36, lineHeight: 44 },
+  huge: { fontSize: 72, lineHeight: 84 },
   answer: {
     alignSelf: 'stretch',
     alignItems: 'center',

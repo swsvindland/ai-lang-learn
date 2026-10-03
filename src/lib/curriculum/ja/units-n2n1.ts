@@ -1,12 +1,12 @@
 import type { Unit } from '../types';
 
-/** Japanese units 29–35 (JLPT N2 = CEFR B2, JLPT N1 = CEFR C1). */
+/** Japanese units 25–31 (JLPT N2 = CEFR B2, JLPT N1 = CEFR C1). */
 export const unitsN2N1: Unit[] = [
   // ───────────────────────────── N2 (B2) ─────────────────────────────
   {
     id: 'ja-n2-01',
     cefr: 'B2',
-    order: 29,
+    order: 25,
     title: '書き言葉: Formal and written Japanese',
     theme: 'Reading and discussing news articles, reports, and essays',
     canDo: [
@@ -86,7 +86,7 @@ export const unitsN2N1: Unit[] = [
   {
     id: 'ja-n2-02',
     cefr: 'B2',
-    order: 30,
+    order: 26,
     title: '時と条件: Nuanced time and conditions',
     theme: 'Precise timing, interruptions, and conditions when coordinating plans',
     canDo: [
@@ -166,7 +166,7 @@ export const unitsN2N1: Unit[] = [
   {
     id: 'ja-n2-03',
     cefr: 'B2',
-    order: 31,
+    order: 27,
     title: '話し手の気持ち: Speaker attitude',
     theme: 'Obligation, reluctant necessity, conviction, and risk in big decisions',
     canDo: [
@@ -246,7 +246,7 @@ export const unitsN2N1: Unit[] = [
   {
     id: 'ja-n2-04',
     cefr: 'B2',
-    order: 32,
+    order: 28,
     title: 'ビジネス日本語: Business Japanese',
     theme: 'Business keigo, emails, and phone calls with clients',
     canDo: [
@@ -328,7 +328,7 @@ export const unitsN2N1: Unit[] = [
   {
     id: 'ja-n1-01',
     cefr: 'C1',
-    order: 33,
+    order: 29,
     title: '硬い表現: Formal and literary expressions',
     theme: 'Ceremonial and literary expressions for speeches and formal writing',
     canDo: [
@@ -408,7 +408,7 @@ export const unitsN2N1: Unit[] = [
   {
     id: 'ja-n1-02',
     cefr: 'C1',
-    order: 34,
+    order: 30,
     title: '微妙なニュアンス: Subtle concession',
     theme: 'Conceding, contrasting, and explaining circumstances in a local controversy',
     canDo: [
@@ -488,7 +488,7 @@ export const unitsN2N1: Unit[] = [
   {
     id: 'ja-n1-03',
     cefr: 'C1',
-    order: 35,
+    order: 31,
     title: '議論する: Debate and persuasion',
     theme: 'Arguing a case formally: resolve, purpose, and rebuttal',
     canDo: [

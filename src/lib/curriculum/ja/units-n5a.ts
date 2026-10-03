@@ -1,12 +1,12 @@
 import type { Unit } from '../types';
 
-/** Japanese units 6–10 (JLPT N5, part 1). */
+/** Japanese units 2–6 (JLPT N5, part 1). */
 export const unitsN5a: Unit[] = [
   // ───────────────────────────── N5 (A1) ─────────────────────────────
   {
     id: 'ja-n5-01',
     cefr: 'A1',
-    order: 6,
+    order: 2,
     title: 'はじめまして: Introductions',
     theme: 'Introducing yourself, nationalities, and jobs',
     canDo: [
@@ -75,8 +75,6 @@ export const unitsN5a: Unit[] = [
       { id: 'v-ja-n5-01-15', text: '名前', reading: 'なまえ', en: 'name', pos: 'noun', example: { text: 'お名前は何ですか。', reading: 'おなまえ は なん です か。', en: "What's your name?" } },
       { id: 'v-ja-n5-01-16', text: '友だち', reading: 'ともだち', en: 'friend', pos: 'noun', example: { text: 'ケンさんは私の友だちです。', reading: 'ケン さん は わたし の ともだち です。', en: 'Ken is my friend.' } },
       { id: 'v-ja-n5-01-17', text: 'だれ', en: 'who', pos: 'pronoun', example: { text: '日本語の先生はだれですか。', reading: 'にほんご の せんせい は だれ です か。', en: 'Who is the Japanese teacher?' } },
-      { id: 'v-ja-n5-01-18', text: 'はい', en: 'yes', pos: 'interjection', example: { text: 'はい、学生です。', reading: 'はい、 がくせい です。', en: "Yes, I'm a student." } },
-      { id: 'v-ja-n5-01-19', text: 'いいえ', en: 'no', pos: 'interjection', example: { text: 'いいえ、日本人じゃありません。', reading: 'いいえ、 にほんじん じゃ ありません。', en: "No, I'm not Japanese." } },
       { id: 'v-ja-n5-01-20', text: 'そうです', en: "that's right", pos: 'phrase', example: { text: '「先生ですか。」「はい、そうです。」', reading: '「せんせい です か。」 「はい、 そう です。」', en: '"Are you a teacher?" "Yes, I am."' } },
       { id: 'v-ja-n5-01-21', text: 'ちがう', en: 'to be different; to be wrong', pos: 'verb', example: { text: '「中国人ですか。」「いいえ、ちがいます。」', reading: '「ちゅうごくじん です か。」 「いいえ、 ちがいます。」', en: '"Are you Chinese?" "No, I\'m not."' } },
       { id: 'v-ja-n5-01-22', text: 'よろしくおねがいします', en: 'nice to meet you (lit. please treat me kindly)', pos: 'phrase', example: { text: 'リサです。よろしくおねがいします。', reading: 'リサ です。 よろしく おねがいします。', en: "I'm Lisa. Nice to meet you." } },
@@ -93,7 +91,7 @@ export const unitsN5a: Unit[] = [
   {
     id: 'ja-n5-02',
     cefr: 'A1',
-    order: 7,
+    order: 3,
     title: 'これはいくらですか: Things and prices',
     theme: 'Pointing at things, asking what they are, and shopping with yen',
     canDo: [
@@ -180,7 +178,7 @@ export const unitsN5a: Unit[] = [
   {
     id: 'ja-n5-03',
     cefr: 'A1',
-    order: 8,
+    order: 4,
     title: 'どこにありますか: Places and locations',
     theme: 'Asking where things are and describing locations',
     canDo: [
@@ -267,7 +265,7 @@ export const unitsN5a: Unit[] = [
   {
     id: 'ja-n5-04',
     cefr: 'A1',
-    order: 9,
+    order: 5,
     title: '毎日の生活: Daily routine',
     theme: 'Talking about what you do every day and when',
     canDo: [
@@ -354,7 +352,7 @@ export const unitsN5a: Unit[] = [
   {
     id: 'ja-n5-05',
     cefr: 'A1',
-    order: 10,
+    order: 6,
     title: 'どこへ行きますか: Going places',
     theme: 'Saying where, when, how, and with whom you go',
     canDo: [

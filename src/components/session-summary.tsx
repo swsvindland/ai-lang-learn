@@ -92,6 +92,15 @@ export function SessionSummaryView({
         </Section>
       ) : null}
 
+      {summary.newCharacters?.length ? (
+        <Section title="Characters you learned">
+          <Card>
+            <Text variant="title">{summary.newCharacters.join('  ')}</Text>
+            <Text variant="caption">They&apos;ll come back in reviews; their romaji and furigana fade once you know them.</Text>
+          </Card>
+        </Section>
+      ) : null}
+
       {homework.length ? (
         <Section title="Homework before next time">
           {homework.map((hw) => (

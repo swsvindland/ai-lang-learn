@@ -4,7 +4,9 @@ import { StyleSheet, View } from 'react-native';
 import { AudioButton, ChoiceOption, Feedback, haptic, type ChoiceState } from '@/components/ui/controls';
 import { Icons } from '@/components/ui/icon';
 import { Card } from '@/components/ui/layout';
-import { TargetText } from '@/components/ui/target-text';
+import { TargetText, useReadingAids } from '@/components/ui/target-text';
+import { isAllKana, romajiFor } from '@/lib/japanese';
+import { needsRomaji } from '@/lib/reading-aids';
 import { Text } from '@/components/ui/text';
 import { Spacing } from '@/constants/theme';
 import { language } from '@/lib/languages';
@@ -20,8 +22,11 @@ function optionState(i: number, picked: number | null, answer: number): ChoiceSt
 }
 
 export function ClozeActivity({ activity, onDone }: ActivityProps<'cloze'>) {
-  const { drill, options, grammarId } = activity;
+  const { drill, options, grammarId, skill } = activity;
   const answerIndex = options.indexOf(drill.answer);
+  const aids = useReadingAids();
+  // Kana answer choices get romaji underneath until the learner can read them.
+  const hint = (o: string) => (isAllKana(o) && needsRomaji(o, aids) ? romajiFor(o) : undefined);
   const [picked, setPicked] = useState<number | null>(null);
   const correct = picked === answerIndex;
   const full = drill.text.replace('___', drill.answer);
@@ -43,7 +48,7 @@ export function ClozeActivity({ activity, onDone }: ActivityProps<'cloze'>) {
           <ContinueButton
             onPress={() =>
               onDone({
-                skill: 'grammar',
+                skill: skill ?? 'grammar',
                 score: correct ? 1 : 0,
                 ref: grammarId,
                 prompt: drill.text,
@@ -68,7 +73,13 @@ export function ClozeActivity({ activity, onDone }: ActivityProps<'cloze'>) {
       </Card>
       <View style={styles.options}>
         {options.map((o, i) => (
-          <ChoiceOption key={o} label={o} state={optionState(i, picked, answerIndex)} onPress={() => choose(i)} />
+          <ChoiceOption
+            key={o}
+            label={o}
+            hint={hint(o)}
+            state={optionState(i, picked, answerIndex)}
+            onPress={() => choose(i)}
+          />
         ))}
       </View>
       {picked !== null ? (

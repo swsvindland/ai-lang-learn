@@ -1,12 +1,12 @@
 import type { Unit } from '../types';
 
-/** Japanese units 19–22 (JLPT N4, part 2). */
+/** Japanese units 15–18 (JLPT N4, part 2). */
 export const unitsN4b: Unit[] = [
   // ───────────────────────────── N4 (A2) ─────────────────────────────
   {
     id: 'ja-n4-05',
     cefr: 'A2',
-    order: 19,
+    order: 15,
     title: 'できること: Ability and plans',
     theme: 'Saying what you can do and talking about your plans',
     canDo: [
@@ -94,7 +94,7 @@ export const unitsN4b: Unit[] = [
   {
     id: 'ja-n4-06',
     cefr: 'A2',
-    order: 20,
+    order: 16,
     title: 'あげる・くれる・もらう: Giving and receiving',
     theme: 'Gifts, favors, and who does what for whom',
     canDo: [
@@ -181,7 +181,7 @@ export const unitsN4b: Unit[] = [
   {
     id: 'ja-n4-07',
     cefr: 'A2',
-    order: 21,
+    order: 17,
     title: 'もし: Conditionals',
     theme: 'If and when: conditions, natural results, and advice',
     canDo: [
@@ -267,7 +267,7 @@ export const unitsN4b: Unit[] = [
   {
     id: 'ja-n4-08',
     cefr: 'A2',
-    order: 22,
+    order: 18,
     title: 'そうだ・らしい: Guessing and hearsay',
     theme: 'Weather forecasts, appearances, guesses, and passing on what you heard',
     canDo: [

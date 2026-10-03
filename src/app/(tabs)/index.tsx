@@ -24,6 +24,7 @@ import {
   unitMastery,
 } from '@/lib/learner';
 import { WEEKDAYS } from '@/lib/reminders';
+import { nextScriptItems, scriptKnowledge } from '@/lib/script';
 
 function greeting() {
   return language().phrases.greeting(new Date().getHours());
@@ -45,9 +46,10 @@ export default function TodayScreen() {
       homework: openHomework(),
       rating,
       refresh: refreshProgress(),
+      nextChars: nextScriptItems(8, unit.order, scriptKnowledge().introducedIds),
     };
   });
-  const { profile, unit, mastery, due, week, stats, homework, rating, refresh } = data;
+  const { profile, unit, mastery, due, week, stats, homework, rating, refresh, nextChars } = data;
   if (!profile) return null;
 
   const goal = profile.sessionsPerWeek;
@@ -80,6 +82,16 @@ export default function TodayScreen() {
             <PlanLine
               icon={Icons.lightbulb}
               text={`Refresh earlier words: ${refresh.total - refresh.pending} of ${refresh.total} checked`}
+            />
+          ) : null}
+          {nextChars.length ? (
+            <PlanLine
+              icon={Icons.book}
+              text={`Reading: ${nextChars[0].group.script} ${nextChars
+                .filter((c) => c.group.script === nextChars[0].group.script)
+                .slice(0, 5)
+                .map((c) => c.vocab.text)
+                .join(' ')}`}
             />
           ) : null}
           <PlanLine icon={Icons.graduation} text={unit.grammar.map((g) => g.title).join(' · ')} />

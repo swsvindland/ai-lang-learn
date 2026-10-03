@@ -1,12 +1,12 @@
 import type { Unit } from '../types';
 
-/** Japanese units 15–18 (JLPT N4, part 1). */
+/** Japanese units 11–14 (JLPT N4, part 1). */
 export const unitsN4a: Unit[] = [
   // ───────────────────────────── N4 ─────────────────────────────
   {
     id: 'ja-n4-01',
     cefr: 'A2',
-    order: 15,
+    order: 11,
     title: '普通形: Plain form and casual speech',
     theme: 'Plain forms and casual conversation with friends',
     canDo: [
@@ -92,7 +92,7 @@ export const unitsN4a: Unit[] = [
   {
     id: 'ja-n4-02',
     cefr: 'A2',
-    order: 16,
+    order: 12,
     title: 'ルール: Permission and obligation',
     theme: 'Rules, permission, and obligation at work',
     canDo: [
@@ -179,7 +179,7 @@ export const unitsN4a: Unit[] = [
   {
     id: 'ja-n4-03',
     cefr: 'A2',
-    order: 17,
+    order: 13,
     title: '経験: Experiences and advice',
     theme: 'Life experiences, travel, and giving advice',
     canDo: [
@@ -265,7 +265,7 @@ export const unitsN4a: Unit[] = [
   {
     id: 'ja-n4-04',
     cefr: 'A2',
-    order: 18,
+    order: 14,
     title: '理由と説明: Reasons and describing people',
     theme: 'Giving reasons and excuses, and describing people',
     canDo: [
