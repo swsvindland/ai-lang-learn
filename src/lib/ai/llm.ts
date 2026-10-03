@@ -52,6 +52,8 @@ export type LlmAvailability = {
   /** Requests leave the device. */
   cloud: boolean;
   reason?: string;
+  /** Set when the chosen cloud tutor isn't ready and on-device AI stands in for it. */
+  notice?: string;
 };
 
 const DEVICE_LABEL: Record<string, string> = { apple: 'Apple Intelligence', 'gemini-nano': 'Gemini Nano' };
@@ -114,15 +116,37 @@ async function cloudAvailability(provider: Exclude<AiProvider, 'device'>): Promi
     : { ...base, status: 'unavailable', reason: 'Subscribe to Hablo Plus in Settings → AI tutor.' };
 }
 
-/** Status of the tutor the learner picked. Call with `refresh` after changing AI settings. */
-export async function getAvailability(refresh = false): Promise<LlmAvailability> {
-  if (cachedAvailability && !refresh) return cachedAvailability;
+async function resolveAvailability(refresh: boolean): Promise<LlmAvailability> {
   const provider = aiProvider();
   const device = await deviceAvailability(refresh || !deviceStatus);
-  const next = provider === 'device' ? device : await cloudAvailability(provider);
-  cachedAvailability = next;
-  listeners.forEach((l) => l(next));
-  return next;
+  if (provider === 'device') return device;
+  const cloud = await cloudAvailability(provider);
+  if (cloud.status === 'available' || device.status !== 'available') return cloud;
+  // Don't switch the tutor off while the cloud option is being set up (or a subscription lapsed).
+  return { ...device, notice: `${cloud.label} isn't ready: ${cloud.reason} Using ${device.label} in the meantime.` };
+}
+
+let availabilitySeq = 0;
+let inflight: Promise<LlmAvailability> | null = null;
+
+/** Status of the tutor the learner picked. Call with `refresh` after changing AI settings. */
+export function getAvailability(refresh = false): Promise<LlmAvailability> {
+  if (cachedAvailability && !refresh) return Promise.resolve(cachedAvailability);
+  if (inflight && !refresh) return inflight;
+  // Checks can overlap (e.g. a slow store lookup at launch while the learner changes
+  // provider); only the newest one may update the cache.
+  const seq = ++availabilitySeq;
+  const run = resolveAvailability(refresh).then((next) => {
+    if (seq !== availabilitySeq) return cachedAvailability ?? next;
+    cachedAvailability = next;
+    listeners.forEach((l) => l(next));
+    return next;
+  });
+  inflight = run;
+  run.finally(() => {
+    if (inflight === run) inflight = null;
+  }).catch(() => undefined);
+  return run;
 }
 
 /** On-device status regardless of the chosen provider (used for the settings screen and fallback). */
@@ -142,7 +166,7 @@ export function subscribeAvailability(listener: (a: LlmAvailability) => void) {
 }
 
 subscribePlus(() => {
-  if (cachedAvailability?.provider === 'plus') getAvailability(true);
+  if (aiProvider() === 'plus') getAvailability(true);
 });
 
 export function isAiReady() {
@@ -326,6 +350,7 @@ export async function generateText(options: GenerateTextOptions): Promise<string
 
 export async function generateJson<T>(options: GenerateJsonOptions<T>): Promise<T> {
   let lastError: unknown = null;
+  const epoch = backgroundEpoch;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const raw = await run({
@@ -341,7 +366,10 @@ export async function generateJson<T>(options: GenerateJsonOptions<T>): Promise<
       lastError = new Error(`Model output did not match schema: ${raw.slice(0, 200)}`);
     } catch (e) {
       lastError = e;
-      if (e instanceof Cancelled) break;
+      // A cancelled native request rejects with its own error type; don't retry stale background work.
+      if (e instanceof Cancelled || (options.priority === 'background' && epoch !== backgroundEpoch)) {
+        throw new Cancelled();
+      }
     }
   }
   throw lastError ?? new Error('Generation failed');

@@ -42,9 +42,14 @@ daily cap keeps a single runaway client from costing more than a few cents a day
 
 ## Notes and limits
 
-- **Identity.** Subscribers are identified by RevenueCat's anonymous app user id, a random id stored on the device.
-  Anyone who learned someone's id could use their quota, so treat it like a bearer token. If you add accounts later,
-  log users in with `Purchases.logIn` and switch to a signed token.
+- **Identity.** Subscribers are identified by RevenueCat's anonymous app user id (`$RCAnonymousID:…`), a random id
+  stored on the device. Malformed ids are rejected, and a per-IP limit runs before any RevenueCat lookup. Still,
+  anyone who learned someone's id could use their daily quota, so treat it like a bearer token. For stronger
+  guarantees, add App Attest / Play Integrity, or accounts (`Purchases.logIn`) with a signed token. If you add
+  accounts, widen `SUBSCRIBER_ID` in `src/index.ts`.
+- **RevenueCat lookups.** The v1 `GET /subscribers/{id}` endpoint creates the customer if it doesn't exist. The id
+  format check and IP limit keep that from being abused. RevenueCat's v2 API can check entitlements without
+  creating customers if you'd rather switch.
 - **Privacy.** Tutor prompts (learner answers, chat messages, lesson content) pass through the worker to OpenRouter and
   the model provider. The app asks for consent before enabling a cloud tutor. Mention this in the App Store privacy
   label and privacy policy.

@@ -17,6 +17,8 @@ export interface Env {
   DAILY_REQUEST_LIMIT: string;
   MAX_TOKENS: string;
   USAGE: KVNamespace;
+  /** Per-IP limiter that runs before any RevenueCat lookup or KV write. */
+  IP_LIMITER: RateLimit;
 }
 
 type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
@@ -28,10 +30,13 @@ function errorResponse(status: number, message: string) {
   return Response.json({ error: { message } }, { status });
 }
 
+// The app uses RevenueCat's anonymous ids. If you add accounts (Purchases.logIn), widen this to match your ids.
+const SUBSCRIBER_ID = /^\$RCAnonymousID:[0-9a-f]{32}$/;
+
 function subscriberId(request: Request) {
   const header = request.headers.get('Authorization') ?? '';
   const id = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
-  return id && id.length <= 200 ? id : null;
+  return SUBSCRIBER_ID.test(id) ? id : null;
 }
 
 /** RevenueCat entitlement check, cached in KV (briefly for "no" so new purchases unlock fast). */
@@ -45,10 +50,19 @@ async function isSubscribed(userId: string, env: Env) {
   });
   if (!res.ok) throw new Error(`RevenueCat returned ${res.status}`);
   const data = (await res.json()) as {
-    subscriber?: { entitlements?: Record<string, { expires_date: string | null }> };
+    subscriber?: {
+      entitlements?: Record<string, { expires_date: string | null; grace_period_expires_date?: string | null }>;
+    };
   };
   const entitlement = data.subscriber?.entitlements?.[env.ENTITLEMENT];
-  const active = !!entitlement && (entitlement.expires_date === null || Date.parse(entitlement.expires_date) > Date.now());
+  // Lifetime purchases have no expiry; a billing grace period keeps access until it ends.
+  const until = Math.max(
+    0,
+    ...[entitlement?.expires_date, entitlement?.grace_period_expires_date]
+      .map((d) => (d ? Date.parse(d) : NaN))
+      .filter(Number.isFinite)
+  );
+  const active = !!entitlement && (entitlement.expires_date === null || until > Date.now());
   await env.USAGE.put(cacheKey, active ? '1' : '0', { expirationTtl: active ? 600 : 60 });
   return active;
 }
@@ -88,16 +102,11 @@ export default {
     if (url.pathname !== '/v1/chat/completions') return errorResponse(404, 'Not found');
     if (request.method !== 'POST') return errorResponse(405, 'Use POST');
 
+    // Cheap checks first, so junk traffic never reaches RevenueCat or KV.
+    const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
+    if (!(await env.IP_LIMITER.limit({ key: ip })).success) return errorResponse(429, 'Too many requests.');
     const userId = subscriberId(request);
-    if (!userId) return errorResponse(401, 'Missing subscriber id.');
-    try {
-      if (!(await isSubscribed(userId, env))) return errorResponse(403, 'Hablo Plus is not active for this account.');
-    } catch {
-      return errorResponse(503, 'Could not verify your subscription right now. Try again shortly.');
-    }
-    if (!(await takeDailyQuota(userId, env))) {
-      return errorResponse(429, "You've reached today's tutor limit. It resets at midnight UTC.");
-    }
+    if (!userId) return errorResponse(401, 'Missing or malformed subscriber id.');
 
     let body: { messages?: unknown; temperature?: unknown; max_tokens?: unknown; response_format?: { type?: unknown } };
     try {
@@ -107,6 +116,15 @@ export default {
     }
     const messages = sanitizeMessages(body.messages);
     if (!messages) return errorResponse(400, 'Invalid or oversized messages.');
+
+    try {
+      if (!(await isSubscribed(userId, env))) return errorResponse(403, 'Hablo Plus is not active for this account.');
+    } catch {
+      return errorResponse(503, 'Could not verify your subscription right now. Try again shortly.');
+    }
+    if (!(await takeDailyQuota(userId, env))) {
+      return errorResponse(429, "You've reached today's tutor limit. It resets at midnight UTC.");
+    }
 
     const maxTokens = Math.min(Number(body.max_tokens) || 1024, Number(env.MAX_TOKENS || '2000'));
     const temperature = typeof body.temperature === 'number' ? Math.min(1.5, Math.max(0, body.temperature)) : undefined;

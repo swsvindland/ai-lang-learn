@@ -249,9 +249,10 @@ export async function conversationTurn(args: {
   history: ChatTurn[];
 }): Promise<ConversationReply> {
   const lang = language();
-  // On-device context is ~4k tokens, so keep only the tail of the chat there.
+  // On-device context is ~4k tokens, so keep only the tail of the chat there. Cloud models
+  // get more, but still little enough to fit on-device if a failed request falls back.
   const transcript = args.history
-    .slice(hasLargeContext() ? -40 : -10)
+    .slice(hasLargeContext() ? -20 : -10)
     .map((t) => `${t.role === 'ai' ? 'You' : 'Learner'}: ${t.text}`)
     .join('\n');
   const keys = lang.readings ? ['reply', 'replyReading', 'replyEnglish', 'goalMet'] : ['reply', 'replyEnglish', 'goalMet'];

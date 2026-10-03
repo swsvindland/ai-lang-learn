@@ -264,7 +264,8 @@ export function resetCourse() {
       'homework',
       'vocab_refresh',
     ]) {
-      target.execSync(`DELETE FROM ${table}`);
+      // `WHERE 1` stops SQLite's truncate shortcut, which skips the change hook useDbQuery relies on.
+      target.execSync(`DELETE FROM ${table} WHERE 1`);
     }
   });
 }

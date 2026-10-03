@@ -87,6 +87,7 @@ export default function AiTutorScreen() {
             </Text>
           </Row>
           {status.reason && status.status !== 'available' ? <Text variant="caption">{status.reason}</Text> : null}
+          {status.notice ? <Text variant="caption">{status.notice}</Text> : null}
         </Card>
       ) : null}
 

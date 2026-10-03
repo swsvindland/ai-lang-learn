@@ -226,6 +226,7 @@ function SettingsForm({ profile }: { profile: Profile }) {
             {ai?.reason && ai.status !== 'available' ? (
               <Text textStyle={{ color: secondary, fontSize: 13 }}>{ai.reason}</Text>
             ) : null}
+            {ai?.notice ? <Text textStyle={{ color: secondary, fontSize: 13 }}>{ai.notice}</Text> : null}
             <Button label="Choose AI tutor…" variant="text" onPress={() => router.push('/ai')} />
             <Text textStyle={{ color: secondary, fontSize: 13 }}>
               {ai?.cloud

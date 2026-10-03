@@ -54,6 +54,14 @@ function escapeRegex(text: string) {
 
 function alignChunk(text: string, reading: string): FuriganaSegment[] | null {
   const runs = runsOf(text);
+  // Two kanji/number runs with only a space or symbol between them (東京　大阪, 3.5) have no kana
+  // anchor to split the reading, so any split would be a guess.
+  let previous: Run['kind'] | null = null;
+  for (const run of runs) {
+    if (run.kind === 'punct') continue;
+    if (run.kind === 'other' && previous === 'other') return null;
+    previous = run.kind;
+  }
   const plain = stripPunctuation(reading);
   // Kana in the text must appear verbatim in the reading; everything else (kanji,
   // digits, Latin letters) is a group whose reading sits between those anchors.

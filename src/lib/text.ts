@@ -100,7 +100,7 @@ function normalizeJa(text: string) {
   return stripPunctuation(text.normalize('NFKC').toLowerCase());
 }
 
-// A vowel after a kana from its own row (or い after e, う after o) only lengthens it.
+// A vowel after a kana from its own row (or い after e, う after o) lengthens it.
 const LONG_VOWEL_AFTER: Record<string, string> = {
   あ: 'あかがさざただなはばぱまやゃらわ',
   い: 'いきぎしじちぢにひびぴみりえけげせぜてでねへべぺめれ',
@@ -108,23 +108,21 @@ const LONG_VOWEL_AFTER: Record<string, string> = {
   え: 'えけげせぜてでねへべぺめれ',
   お: 'おこごそぞとどのほぼぽもよょろ',
 };
-const PARTICLE_SPELLING: Record<string, string> = { は: 'わ', を: 'お', へ: 'え', づ: 'ず', ぢ: 'じ' };
+// Romaji can't tell these apart, and they sound the same.
+const KANA_VARIANT: Record<string, string> = { づ: 'ず', ぢ: 'じ' };
 
 /**
- * Folds the spelling differences a learner shouldn't lose points for: romaji
- * vs kana, katakana vs hiragana, long-vowel spellings (おう/おお/ー), doubled
- * letters, and how particles are typed in romaji (wa/は, o/を, e/へ). Works on
- * single characters (already converted to hiragana) so the target's display
- * characters keep a 1:1 mapping to comparison keys; '' means "ignore".
+ * Folds spelling differences a learner shouldn't lose points for: katakana vs
+ * hiragana (already converted) and how a long vowel is written (おう/おお/ー all
+ * become ー). Vowel length itself still counts: おばあさん ≠ おばさん. Works on
+ * single characters so the target's display characters keep a 1:1 mapping to
+ * comparison keys; '' means "ignore".
  */
 function foldSequence(chars: string[]): string[] {
   let prev = '';
   return chars.map((c) => {
-    let k = c === 'ー' ? '' : PARTICLE_SPELLING[c] ?? c;
-    if (k && prev) {
-      const longVowel = LONG_VOWEL_AFTER[k]?.includes(prev);
-      if (longVowel || (k === prev && /[ぁ-ゖ]/.test(k))) k = '';
-    }
+    let k = KANA_VARIANT[c] ?? c;
+    if (k === 'ー' || (prev && LONG_VOWEL_AFTER[k]?.includes(prev))) return 'ー';
     if (k) prev = k;
     return k;
   });
@@ -134,7 +132,25 @@ function toKanaChars(text: string) {
   return [...toHiragana(text, { convertLongVowelMark: false })];
 }
 
-function foldJa(text: string) {
+// Romaji spells particles by sound; the target text spells them は/を/へ.
+const ROMAJI_PARTICLE: Record<string, string> = { wa: 'ha', o: 'wo', e: 'he', konnichiwa: 'konnichiha', konbanwa: 'konbanha' };
+
+/** Learner input → folded kana. Romaji words are respelled first so "watashi wa" matches わたしは. */
+function foldAnswer(text: string) {
+  const respelled = text
+    .normalize('NFKC')
+    .toLowerCase()
+    .split(/(\s+)/)
+    .map((word) => {
+      const bare = word.replace(/[^a-z]/g, '');
+      return ROMAJI_PARTICLE[bare] ? word.replace(bare, ROMAJI_PARTICLE[bare]) : word;
+    })
+    .join('');
+  return foldSequence(toKanaChars(stripPunctuation(respelled))).join('');
+}
+
+/** Target text or reading → folded kana. */
+function foldTarget(text: string) {
   return foldSequence(toKanaChars(normalizeJa(text))).join('');
 }
 
@@ -147,7 +163,7 @@ function compareChars(target: string, attempt: string): Comparison {
   );
   const units = chars.map((char, i) => ({ char, key: keys[i] }));
   const t = units.filter((u) => u.key).map((u) => u.key);
-  const a = [...foldJa(attempt)];
+  const a = [...foldAnswer(attempt)];
   const dp = levenshtein(t, a);
   const status: WordMatch['status'][] = Array(t.length).fill('missing');
   let i = t.length;
@@ -189,8 +205,8 @@ export function checkTyped(expected: string, given: string, reading?: string) {
   if (!language().spaced) {
     const exact = normalizeJa(expected) === normalizeJa(given);
     if (exact) return { correct: true, slip: false };
-    const g = foldJa(given);
-    const loose = foldJa(expected) === g || (!!reading && foldJa(reading) === g);
+    const g = foldAnswer(given);
+    const loose = foldTarget(expected) === g || (!!reading && foldTarget(reading) === g);
     return { correct: loose, slip: loose };
   }
   const exact = normalize(expected, { keepAccents: true }) === normalize(given, { keepAccents: true });
