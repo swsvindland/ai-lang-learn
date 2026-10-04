@@ -4,9 +4,13 @@ import { StyleSheet, View } from 'react-native';
 import { AudioButton, ChoiceOption, Feedback, haptic, type ChoiceState } from '@/components/ui/controls';
 import { Icons } from '@/components/ui/icon';
 import { Card } from '@/components/ui/layout';
+import { TargetText, useReadingAids } from '@/components/ui/target-text';
+import { isAllKana, romajiFor } from '@/lib/japanese';
+import { needsRomaji } from '@/lib/reading-aids';
 import { Text } from '@/components/ui/text';
 import { Spacing } from '@/constants/theme';
-import { speakSpanish } from '@/lib/speech';
+import { language } from '@/lib/languages';
+import { speak } from '@/lib/speech';
 
 import { ActivityShell, ContinueButton, type ActivityProps } from './shell';
 
@@ -18,18 +22,21 @@ function optionState(i: number, picked: number | null, answer: number): ChoiceSt
 }
 
 export function ClozeActivity({ activity, onDone }: ActivityProps<'cloze'>) {
-  const { drill, options, grammarId } = activity;
+  const { drill, options, grammarId, skill } = activity;
   const answerIndex = options.indexOf(drill.answer);
+  const aids = useReadingAids();
+  // Kana answer choices get romaji underneath until the learner can read them.
+  const hint = (o: string) => (isAllKana(o) && needsRomaji(o, aids) ? romajiFor(o) : undefined);
   const [picked, setPicked] = useState<number | null>(null);
   const correct = picked === answerIndex;
-  const full = drill.es.replace('___', drill.answer);
-  const [before, after] = drill.es.split('___');
+  const full = drill.text.replace('___', drill.answer);
+  const phrases = language().phrases;
 
   function choose(i: number) {
     if (picked !== null) return;
     setPicked(i);
     haptic(i === answerIndex ? 'success' : 'error');
-    speakSpanish(full);
+    speak(full);
   }
 
   return (
@@ -41,10 +48,10 @@ export function ClozeActivity({ activity, onDone }: ActivityProps<'cloze'>) {
           <ContinueButton
             onPress={() =>
               onDone({
-                skill: 'grammar',
+                skill: skill ?? 'grammar',
                 score: correct ? 1 : 0,
                 ref: grammarId,
-                prompt: drill.es,
+                prompt: drill.text,
                 expected: drill.answer,
                 response: options[picked],
               })
@@ -53,22 +60,30 @@ export function ClozeActivity({ activity, onDone }: ActivityProps<'cloze'>) {
         ) : null
       }>
       <Card style={styles.prompt}>
-        <Text variant="title">
-          {before}
-          <Text variant="title" color={picked === null ? 'primary' : correct ? 'success' : 'error'}>
-            {picked === null ? '_____' : drill.answer}
-          </Text>
-          {after}
-        </Text>
+        <TargetText
+          text={drill.text}
+          reading={drill.reading}
+          variant="title"
+          gap={{
+            text: picked === null ? '_____' : drill.answer,
+            color: picked === null ? 'primary' : correct ? 'success' : 'error',
+          }}
+        />
         <Text variant="caption">{drill.en}</Text>
       </Card>
       <View style={styles.options}>
         {options.map((o, i) => (
-          <ChoiceOption key={o} label={o} state={optionState(i, picked, answerIndex)} onPress={() => choose(i)} />
+          <ChoiceOption
+            key={o}
+            label={o}
+            hint={hint(o)}
+            state={optionState(i, picked, answerIndex)}
+            onPress={() => choose(i)}
+          />
         ))}
       </View>
       {picked !== null ? (
-        <Feedback tone={correct ? 'success' : 'error'} title={correct ? '¡Correcto!' : `It's "${drill.answer}"`}>
+        <Feedback tone={correct ? 'success' : 'error'} title={correct ? phrases.correct : `It's "${drill.answer}"`}>
           <Text variant="body">{full}</Text>
         </Feedback>
       ) : null}
@@ -81,8 +96,8 @@ export function ListenChoiceActivity({ activity, onDone }: ActivityProps<'listen
   const [picked, setPicked] = useState<number | null>(null);
 
   useEffect(() => {
-    speakSpanish(sentence.es);
-  }, [sentence.es]);
+    speak(sentence.text);
+  }, [sentence.text]);
 
   function choose(i: number) {
     if (picked !== null) return;
@@ -101,7 +116,7 @@ export function ListenChoiceActivity({ activity, onDone }: ActivityProps<'listen
               onDone({
                 skill: 'listening',
                 score: picked === answerIndex ? 1 : 0,
-                prompt: sentence.es,
+                prompt: sentence.text,
                 expected: sentence.en,
                 response: options[picked],
               })
@@ -110,7 +125,7 @@ export function ListenChoiceActivity({ activity, onDone }: ActivityProps<'listen
         ) : null
       }>
       <View style={styles.audio}>
-        <AudioButton text={sentence.es} size={80} />
+        <AudioButton text={sentence.text} size={80} />
       </View>
       <View style={styles.options}>
         {options.map((o, i) => (
@@ -118,8 +133,10 @@ export function ListenChoiceActivity({ activity, onDone }: ActivityProps<'listen
         ))}
       </View>
       {picked !== null ? (
-        <Feedback tone={picked === answerIndex ? 'success' : 'error'} title={picked === answerIndex ? '¡Muy bien!' : 'Not quite'}>
-          <Text variant="bodyStrong">{sentence.es}</Text>
+        <Feedback
+          tone={picked === answerIndex ? 'success' : 'error'}
+          title={picked === answerIndex ? language().phrases.veryGood : 'Not quite'}>
+          <TargetText text={sentence.text} reading={sentence.reading} variant="bodyStrong" />
           <Text variant="caption">{sentence.en}</Text>
         </Feedback>
       ) : null}

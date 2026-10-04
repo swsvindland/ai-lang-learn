@@ -6,12 +6,14 @@ import { Button } from '@/components/ui/button';
 import { AudioButton, Feedback, haptic } from '@/components/ui/controls';
 import { Icon, Icons } from '@/components/ui/icon';
 import { Card } from '@/components/ui/layout';
+import { TargetText } from '@/components/ui/target-text';
 import { Text } from '@/components/ui/text';
 import { Radius, Spacing } from '@/constants/theme';
-import { useSpanishRecognizer } from '@/hooks/use-spanish-recognizer';
+import { useSpeechRecognizer } from '@/hooks/use-speech-recognizer';
 import { useTheme } from '@/hooks/use-theme';
 import { gradeTranslation } from '@/lib/ai/tutor';
-import { speakSpanish } from '@/lib/speech';
+import { language } from '@/lib/languages';
+import { speak } from '@/lib/speech';
 import { compareSentences, type WordMatch } from '@/lib/text';
 
 import { ActivityShell, ContinueButton, type ActivityProps } from './shell';
@@ -55,15 +57,17 @@ export function MicButton({
 export function SpeakActivity({ activity, onDone, level, aiReady }: ActivityProps<'speak'>) {
   const { sentence, mode } = activity;
   // No contextual hints: biasing toward the target words would inflate the score.
-  const recognizer = useSpanishRecognizer({ onFinal: score });
+  const recognizer = useSpeechRecognizer({ onFinal: score });
   const player = useAudioPlayer(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [grading, setGrading] = useState(false);
   const [skipped, setSkipped] = useState(false);
 
+  const lang = language();
+
   useEffect(() => {
-    if (mode === 'repeat') speakSpanish(sentence.es);
-  }, [mode, sentence.es]);
+    if (mode === 'repeat') speak(sentence.text);
+  }, [mode, sentence.text]);
 
   function settle(result: Outcome) {
     setOutcome(result);
@@ -73,11 +77,11 @@ export function SpeakActivity({ activity, onDone, level, aiReady }: ActivityProp
   function score(heard: string) {
     // Nothing recognized: the recognizer shows its own error; let them retry.
     if (!heard.trim()) return;
-    const cmp = compareSentences(sentence.es, heard);
+    const cmp = compareSentences(sentence.text, heard, sentence.reading);
     if (mode === 'produce' && aiReady && cmp.score < 0.95) {
       // A different but valid phrasing should still count; let the tutor judge meaning.
       setGrading(true);
-      gradeTranslation({ level, english: sentence.en, reference: sentence.es, answer: heard })
+      gradeTranslation({ level, english: sentence.en, reference: sentence.text, answer: heard })
         .then((g) => settle({ score: Math.max(g.score, cmp.score), matches: cmp.matches, heard, note: g.explanation }))
         .catch(() => settle({ score: cmp.score, matches: cmp.matches, heard }))
         .finally(() => setGrading(false));
@@ -102,7 +106,7 @@ export function SpeakActivity({ activity, onDone, level, aiReady }: ActivityProp
 
   return (
     <ActivityShell
-      kicker={mode === 'repeat' ? 'Speaking · Repeat after me' : 'Speaking · Say it in Spanish'}
+      kicker={mode === 'repeat' ? 'Speaking · Repeat after me' : `Speaking · Say it in ${lang.name}`}
       icon={Icons.mic}
       footer={
         outcome || skipped ? (
@@ -114,8 +118,8 @@ export function SpeakActivity({ activity, onDone, level, aiReady }: ActivityProp
                   : {
                       skill: 'speaking',
                       score: outcome!.score,
-                      prompt: mode === 'repeat' ? sentence.es : sentence.en,
-                      expected: sentence.es,
+                      prompt: mode === 'repeat' ? sentence.text : sentence.en,
+                      expected: sentence.text,
                       response: outcome!.heard,
                       feedback: outcome!.note,
                     }
@@ -129,13 +133,11 @@ export function SpeakActivity({ activity, onDone, level, aiReady }: ActivityProp
       <Card style={styles.prompt}>
         {mode === 'repeat' ? (
           <>
-            <Text variant="spanish" center>
-              {sentence.es}
-            </Text>
+            <TargetText text={sentence.text} reading={sentence.reading} center />
             <Text variant="caption" center>
               {sentence.en}
             </Text>
-            <AudioButton text={sentence.es} size={48} />
+            <AudioButton text={sentence.text} size={48} />
           </>
         ) : (
           <>
@@ -144,10 +146,8 @@ export function SpeakActivity({ activity, onDone, level, aiReady }: ActivityProp
             </Text>
             {outcome || skipped ? (
               <>
-                <Text variant="spanish" center color="primary">
-                  {sentence.es}
-                </Text>
-                <AudioButton text={sentence.es} size={44} />
+                <TargetText text={sentence.text} reading={sentence.reading} center color="primary" />
+                <AudioButton text={sentence.text} size={44} />
               </>
             ) : null}
           </>
@@ -175,7 +175,13 @@ export function SpeakActivity({ activity, onDone, level, aiReady }: ActivityProp
       {outcome ? (
         <Feedback
           tone={tone}
-          title={outcome.score >= 0.85 ? '¡Excelente pronunciación!' : outcome.score >= 0.6 ? 'Good — a few words to polish' : "Let's try that again"}>
+          title={
+            outcome.score >= 0.85
+              ? lang.phrases.greatPronunciation
+              : outcome.score >= 0.6
+                ? 'Good — a few words to polish'
+                : "Let's try that again"
+          }>
           <WordDiff matches={outcome.matches} />
           <Text variant="caption">I heard: “{outcome.heard || '…'}”</Text>
           {outcome.note ? <Text variant="body">{outcome.note}</Text> : null}

@@ -7,14 +7,9 @@ import { Text } from '@/components/ui/text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useDbQuery } from '@/hooks/use-db-query';
 import { useTheme } from '@/hooks/use-theme';
-import {
-  CEFR_LEVELS,
-  CUMULATIVE_HOURS,
-  FLUENT_RATING,
-  LEVEL_DESCRIPTIONS,
-  ratingToCefr,
-  units,
-} from '@/lib/curriculum';
+import { CEFR_LEVELS, courseUnits, FLUENT_RATING, ratingToCefr } from '@/lib/curriculum';
+import { language, levelLabel } from '@/lib/languages';
+import { scriptProgress } from '@/lib/script';
 import {
   getProfile,
   getSkills,
@@ -30,7 +25,7 @@ export default function JourneyScreen() {
   const data = useDbQuery(() => {
     const skills = getSkills();
     const statuses = unitStatuses();
-    const active = units.find((u) => statuses[u.id] === 'active');
+    const active = courseUnits().find((u) => statuses[u.id] === 'active');
     return {
       skills,
       rating: overallRating(skills),
@@ -38,15 +33,22 @@ export default function JourneyScreen() {
       statuses,
       activeMastery: active ? unitMastery(active).overall : 0,
       profile: getProfile(),
+      reading: scriptProgress(),
     };
   });
-  const { skills, rating, stats, statuses, activeMastery, profile } = data;
+  const { skills, rating, stats, statuses, activeMastery, profile, reading } = data;
+  // Show kanji levels up to the first one not yet started, so the list grows with the learner.
+  const visibleReading = reading.filter(
+    (r, i) => r.script !== 'kanji' || r.introduced > 0 || reading.findIndex((x) => x.script === 'kanji') === i
+  );
+  const lang = language();
+  const hours = lang.hoursToReach;
   const level = ratingToCefr(rating);
   const toFluent = Math.min(1, rating / FLUENT_RATING);
 
   // Pace projection: hours per week from the plan + expected homework.
   const weeklyHours = profile ? (profile.sessionsPerWeek * profile.sessionMinutes) / 60 + 1.5 : 3;
-  const hoursRemaining = Math.max(0, CUMULATIVE_HOURS.C1 - Math.max(stats.totalHours, CUMULATIVE_HOURS[level]));
+  const hoursRemaining = Math.max(0, hours.C1 - Math.max(stats.totalHours, hours[level]));
   const weeksToFluent = Math.ceil(hoursRemaining / weeklyHours);
 
   return (
@@ -58,17 +60,17 @@ export default function JourneyScreen() {
           <View>
             <Text variant="label">Current level</Text>
             <Text variant="display" color="primary">
-              {level}
+              {levelLabel(level)}
             </Text>
           </View>
           <View style={styles.right}>
-            <Text variant="label">To fluent (C1)</Text>
+            <Text variant="label">To fluent ({levelLabel('C1')})</Text>
             <Text variant="title">{Math.round(toFluent * 100)}%</Text>
           </View>
         </Row>
         <ProgressBar value={toFluent} height={10} />
         <Text variant="body" color="textSecondary">
-          {LEVEL_DESCRIPTIONS[level]}
+          {lang.levelDescriptions[level]}
         </Text>
         <View style={styles.ladder}>
           {CEFR_LEVELS.slice(0, 5).map((l) => {
@@ -82,7 +84,7 @@ export default function JourneyScreen() {
                   ]}
                 />
                 <Text variant="caption" color={reached ? 'primary' : 'textTertiary'}>
-                  {l}
+                  {levelLabel(l)}
                 </Text>
               </View>
             );
@@ -101,9 +103,32 @@ export default function JourneyScreen() {
         <Card style={styles.stat}>
           <Text variant="label">At your pace</Text>
           <Text variant="title">{formatDuration(weeksToFluent)}</Text>
-          <Text variant="caption">to C1 at ~{weeklyHours.toFixed(1)}h/week incl. homework</Text>
+          <Text variant="caption">
+            to {levelLabel('C1')} at ~{weeklyHours.toFixed(1)}h/week incl. homework
+          </Text>
         </Card>
       </Row>
+
+      {visibleReading.length ? (
+        <Section title="Reading">
+          <Card>
+            {visibleReading.map((r) => (
+              <View key={r.label} style={styles.skill}>
+                <Row style={styles.between}>
+                  <Text variant="bodyStrong">{r.label}</Text>
+                  <Text variant="caption">
+                    {r.known} known · {r.introduced} met · {r.total}
+                  </Text>
+                </Row>
+                <ProgressBar value={r.known / r.total} height={6} />
+              </View>
+            ))}
+            <Text variant="caption">
+              A few new characters every session, alongside speaking. Romaji and furigana fade for each one you know.
+            </Text>
+          </Card>
+        </Section>
+      ) : null}
 
       <Section title="Skills">
         <Card>
@@ -112,7 +137,7 @@ export default function JourneyScreen() {
               <Row style={styles.between}>
                 <Text variant="bodyStrong">{SKILL_LABELS[s.skill]}</Text>
                 <Text variant="caption">
-                  {ratingToCefr(s.rating)} · {Math.round(s.rating)}
+                  {levelLabel(ratingToCefr(s.rating))} · {Math.round(s.rating)}
                 </Text>
               </Row>
               <ProgressBar value={s.rating / 500} height={6} color="accent" />
@@ -126,14 +151,14 @@ export default function JourneyScreen() {
 
       <Section title="Course">
         {CEFR_LEVELS.slice(0, 5).map((lvl) => {
-          const levelUnits = units.filter((u) => u.cefr === lvl);
+          const levelUnits = courseUnits().filter((u) => u.cefr === lvl);
           if (!levelUnits.length) return null;
           return (
             <View key={lvl} style={styles.levelGroup}>
               <Row>
-                <Pill label={lvl} tone="primary" />
+                <Pill label={levelLabel(lvl)} tone="primary" />
                 <Text variant="caption" style={styles.flex}>
-                  ~{CUMULATIVE_HOURS[CEFR_LEVELS[CEFR_LEVELS.indexOf(lvl) + 1]] ?? '1000+'} total hours to finish
+                  ~{hours[CEFR_LEVELS[CEFR_LEVELS.indexOf(lvl) + 1]] ?? `${hours.C2}+`} total hours to finish
                 </Text>
               </Row>
               {levelUnits.map((u) => {

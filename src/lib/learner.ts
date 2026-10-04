@@ -1,14 +1,16 @@
 import {
   CEFR_LEVELS,
+  course,
+  courseUnits,
   getGrammar,
   getUnit,
   nextUnit,
   ratingToCefr,
-  units,
   type Cefr,
   type Unit,
 } from '@/lib/curriculum';
-import { all, first, run, transaction } from '@/lib/db';
+import { all, courseHasProfile, first, firstIn, hasActiveCourse, run, transaction } from '@/lib/db';
+import { LANGUAGE_CODES, type LanguageCode } from '@/lib/languages';
 import type { Background, PlacementPlan } from '@/lib/placement';
 import { isLearned } from '@/lib/srs';
 
@@ -53,6 +55,13 @@ export const INTEREST_OPTIONS: { value: Interest; label: string }[] = [
   { value: 'kids', label: 'Kids content' },
 ];
 
+/** How a reading aid (furigana, romaji) is shown: always, never, or only until the characters are learned. */
+export type AidMode = 'auto' | 'always' | 'off';
+// Stored as 0/1/2 in the profile's show_readings / show_romaji columns.
+const AID_MODES: AidMode[] = ['off', 'always', 'auto'];
+const aidFromDb = (n: number) => AID_MODES[n] ?? 'auto';
+const aidToDb = (mode: AidMode) => AID_MODES.indexOf(mode);
+
 export type Profile = {
   name: string | null;
   startLevel: Cefr;
@@ -65,8 +74,12 @@ export type Profile = {
   remindersEnabled: boolean;
   interests: Interest[];
   slowAudio: boolean;
-  /** Prior Spanish experience from onboarding; used for pacing and AI context. */
+  /** Prior experience with the language from onboarding; used for pacing and AI context. */
   background: Background | null;
+  /** Furigana over kanji (languages with readings). */
+  furigana: AidMode;
+  /** Romaji under each Japanese word. */
+  romaji: AidMode;
   createdAt: number;
 };
 
@@ -82,12 +95,12 @@ type ProfileRow = {
   interests: string;
   slow_audio: number;
   background: Background | null;
+  show_readings: number;
+  show_romaji: number;
   created_at: number;
 };
 
-export function getProfile(): Profile | null {
-  const row = first<ProfileRow>('SELECT * FROM profile WHERE id = 1');
-  if (!row) return null;
+function toProfile(row: ProfileRow): Profile {
   return {
     name: row.name,
     startLevel: row.start_level,
@@ -100,20 +113,36 @@ export function getProfile(): Profile | null {
     interests: JSON.parse(row.interests),
     slowAudio: !!row.slow_audio,
     background: row.background,
+    furigana: aidFromDb(row.show_readings),
+    romaji: aidFromDb(row.show_romaji),
     createdAt: row.created_at,
   };
+}
+
+export function getProfile(): Profile | null {
+  if (!hasActiveCourse()) return null;
+  const row = first<ProfileRow>('SELECT * FROM profile WHERE id = 1');
+  return row ? toProfile(row) : null;
+}
+
+/** Another course's profile, e.g. to pre-fill setup when starting a second language. */
+export function profileOf(code: LanguageCode): Profile | null {
+  const row = firstIn<ProfileRow>(code, 'SELECT * FROM profile WHERE id = 1');
+  return row ? toProfile(row) : null;
 }
 
 export function saveProfile(p: Profile) {
   run(
     `INSERT INTO profile (id, name, start_level, sessions_per_week, session_minutes, reminder_days,
-       reminder_hour, reminder_minute, reminders_enabled, interests, slow_audio, background, created_at)
-     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       reminder_hour, reminder_minute, reminders_enabled, interests, slow_audio, background, show_readings,
+       show_romaji, created_at)
+     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET name = excluded.name, start_level = excluded.start_level,
        sessions_per_week = excluded.sessions_per_week, session_minutes = excluded.session_minutes,
        reminder_days = excluded.reminder_days, reminder_hour = excluded.reminder_hour,
        reminder_minute = excluded.reminder_minute, reminders_enabled = excluded.reminders_enabled,
-       interests = excluded.interests, slow_audio = excluded.slow_audio, background = excluded.background`,
+       interests = excluded.interests, slow_audio = excluded.slow_audio, background = excluded.background,
+       show_readings = excluded.show_readings, show_romaji = excluded.show_romaji`,
     [
       p.name,
       p.startLevel,
@@ -126,6 +155,8 @@ export function saveProfile(p: Profile) {
       JSON.stringify(p.interests),
       p.slowAudio ? 1 : 0,
       p.background,
+      aidToDb(p.furigana),
+      aidToDb(p.romaji),
       p.createdAt,
     ]
   );
@@ -144,6 +175,7 @@ export function updateProfile(patch: Partial<Profile>) {
  */
 export function initLearner(profile: Profile, plan?: PlacementPlan) {
   const now = Date.now();
+  const units = courseUnits();
   const start = plan?.startUnit ?? units[0];
   transaction(() => {
     saveProfile({ ...profile, startLevel: start.cefr });
@@ -177,6 +209,15 @@ export function initLearner(profile: Profile, plan?: PlacementPlan) {
         );
       }
     }
+  });
+}
+
+/** Every language the app teaches, with whether it's been started and the level reached. */
+export function courseSummaries(): { code: LanguageCode; started: boolean; level: Cefr }[] {
+  return LANGUAGE_CODES.map((code) => {
+    const started = courseHasProfile(code);
+    const rating = started ? (firstIn<{ r: number | null }>(code, 'SELECT AVG(rating) AS r FROM skills')?.r ?? 0) : 0;
+    return { code, started, level: ratingToCefr(rating) };
   });
 }
 
@@ -334,6 +375,7 @@ export function currentUnit(): Unit {
   const unit = row ? getUnit(row.unit_id) : undefined;
   if (unit) return unit;
   // Everything finished (or state missing): keep practising the last unit.
+  const units = courseUnits();
   return units[units.length - 1];
 }
 
@@ -398,7 +440,10 @@ export function studyStats() {
   const h = first<{ mins: number | null; count: number }>(
     `SELECT SUM(minutes_spent) AS mins, COUNT(*) AS count FROM homework WHERE status = 'done'`
   );
-  const words = first<{ n: number }>(`SELECT COUNT(DISTINCT vocab_id) AS n FROM cards WHERE state = 'review'`);
+  // Reading-track characters (kana, kanji) are counted on their own, not as words.
+  const { scriptById } = course();
+  const reviewed = all<{ vocab_id: string }>(`SELECT DISTINCT vocab_id FROM cards WHERE state = 'review'`);
+  const words = { n: reviewed.filter((r) => !scriptById.has(r.vocab_id)).length };
   const lessonHours = (s?.secs ?? 0) / 3600;
   const homeworkHours = (h?.mins ?? 0) / 60;
   return {

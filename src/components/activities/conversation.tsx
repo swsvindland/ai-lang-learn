@@ -6,19 +6,21 @@ import { Feedback } from '@/components/ui/controls';
 import { Icon, Icons } from '@/components/ui/icon';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/layout';
+import { TargetText } from '@/components/ui/target-text';
 import { Text } from '@/components/ui/text';
 import { Radius, Spacing } from '@/constants/theme';
-import { useSpanishRecognizer } from '@/hooks/use-spanish-recognizer';
+import { useSpeechRecognizer } from '@/hooks/use-speech-recognizer';
 import { useTheme } from '@/hooks/use-theme';
-import { checkSpanish, conversationTurn, type ChatTurn } from '@/lib/ai/tutor';
+import { checkWriting, conversationTurn, type ChatTurn } from '@/lib/ai/tutor';
 import type { Cefr, Scenario } from '@/lib/curriculum';
+import { language } from '@/lib/languages';
 import type { ActivityResult } from '@/lib/session/types';
-import { speakSpanish } from '@/lib/speech';
+import { speak } from '@/lib/speech';
 
 import { ActivityShell, type ActivityProps } from './shell';
 import { MicButton } from './speak';
 
-type Message = ChatTurn & { english?: string; correction?: string; spoken?: boolean };
+type Message = ChatTurn & { reading?: string; english?: string; correction?: string; spoken?: boolean };
 
 const MAX_LEARNER_TURNS = 10;
 // The model tends to call the goal met too early; require a real exchange first.
@@ -38,7 +40,10 @@ export function Conversation({
   onFinish: (result: ActivityResult) => void;
 }) {
   const theme = useTheme();
-  const [messages, setMessages] = useState<Message[]>([{ role: 'ai', text: scenario.opener }]);
+  const [messages, setMessages] = useState<Message[]>([
+    { role: 'ai', text: scenario.opener, reading: scenario.openerReading },
+  ]);
+  const phrases = language().phrases;
   const [draft, setDraft] = useState('');
   const [thinking, setThinking] = useState(false);
   const [goalMet, setGoalMet] = useState(false);
@@ -46,12 +51,12 @@ export function Conversation({
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   // Voice input fills the draft so the learner can review before sending.
-  const recognizer = useSpanishRecognizer({ onFinal: (text) => text && setDraft(text) });
+  const recognizer = useSpeechRecognizer({ onFinal: (text) => text && setDraft(text) });
   const learnerTurns = messages.filter((m) => m.role === 'learner');
   const atLimit = learnerTurns.length >= MAX_LEARNER_TURNS;
 
   useEffect(() => {
-    speakSpanish(scenario.opener);
+    speak(scenario.opener);
   }, [scenario.opener]);
 
   async function send() {
@@ -66,14 +71,17 @@ export function Conversation({
     setError(null);
     try {
       const reply = await conversationTurn({ level, scenario, history });
-      setMessages((prev) => [...prev, { role: 'ai', text: reply.reply, english: reply.replyEnglish }]);
+      setMessages((prev) => [
+        ...prev,
+        { role: 'ai', text: reply.reply, reading: reply.replyReading, english: reply.replyEnglish },
+      ]);
       const learnerCount = history.filter((m) => m.role === 'learner').length;
       if (reply.goalMet && learnerCount >= MIN_TURNS_FOR_GOAL) setGoalMet(true);
-      speakSpanish(reply.reply);
+      speak(reply.reply);
       // Proofread after the reply is on screen so the conversation never waits on it.
       const previousAi = [...messages].reverse().find((m) => m.role === 'ai')?.text;
       const learnerIndex = history.length - 1;
-      checkSpanish({ level, text, context: previousAi })
+      checkWriting({ level, text, context: previousAi })
         .then((check) => {
           if (!check) return;
           const note = check.explanation ? `${check.explanation} → ${check.corrected}` : `Better: ${check.corrected}`;
@@ -117,14 +125,16 @@ export function Conversation({
       footer={
         <>
           {goalMet || atLimit ? (
-            <Feedback tone="success" title={goalMet ? '¡Lo lograste! Goal reached.' : 'Great conversation!'} />
+            <Feedback tone="success" title={goalMet ? `${phrases.goalReached} Goal reached.` : 'Great conversation!'} />
           ) : null}
           {!goalMet && !atLimit ? (
             <View style={styles.composer}>
               <Input
                 value={draft}
                 onChangeText={setDraft}
-                placeholder={recognizer.state === 'listening' ? recognizer.transcript || 'Escuchando…' : 'Escribe en español…'}
+                placeholder={
+                  recognizer.state === 'listening' ? recognizer.transcript || phrases.listening : phrases.writeInLanguage
+                }
                 style={styles.draft}
                 multiline
                 autoCapitalize="sentences"
@@ -172,10 +182,10 @@ export function Conversation({
           m.role === 'ai' ? (
             <Pressable
               key={i}
-              onPress={() => speakSpanish(m.text)}
+              onPress={() => speak(m.text)}
               onLongPress={() => setShowEnglish((s) => ({ ...s, [i]: !s[i] }))}
               style={[styles.bubble, styles.aiBubble, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <Text variant="body">{m.text}</Text>
+              <TargetText text={m.text} reading={m.reading} variant="body" />
               {showEnglish[i] && m.english ? <Text variant="caption">{m.english}</Text> : null}
               {m.english ? (
                 <Text

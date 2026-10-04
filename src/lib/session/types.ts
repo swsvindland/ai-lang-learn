@@ -3,7 +3,7 @@ import type { ClozeDrill, GrammarPoint, Scenario, Sentence, Unit, VocabItem } fr
 import type { ReadingPassage } from '@/lib/ai/tutor';
 import type { Skill } from '@/lib/learner';
 
-export type BlockKind = 'review' | 'refresh' | 'learn' | 'practice' | 'converse';
+export type BlockKind = 'review' | 'refresh' | 'read' | 'learn' | 'practice' | 'converse';
 
 export type Block = {
   kind: BlockKind;
@@ -16,8 +16,11 @@ export type Activity =
   | { kind: 'introduce'; vocab: VocabItem; difficulty: number }
   /** Fast "do you still know this?" check for words from units the learner placed out of. */
   | { kind: 'quick-check'; vocab: VocabItem; difficulty: number }
-  | { kind: 'grammar'; grammar: GrammarPoint; refresher: boolean }
-  | { kind: 'cloze'; drill: ClozeDrill; grammarId: string; options: string[] }
+  /** A grammar note, or (with `reading`) a lesson about the writing system. */
+  | { kind: 'grammar'; grammar: GrammarPoint; refresher: boolean; reading?: boolean }
+  /** Read a known word written in characters just learned: pick its sound (romaji) or meaning. */
+  | { kind: 'read-word'; vocab: VocabItem; ask: 'sound' | 'meaning'; options: string[]; answerIndex: number }
+  | { kind: 'cloze'; drill: ClozeDrill; grammarId: string; options: string[]; skill?: Skill }
   | { kind: 'listen-choice'; sentence: Sentence; options: string[]; answerIndex: number }
   | { kind: 'dictation'; sentence: Sentence }
   | { kind: 'speak'; sentence: Sentence; mode: 'repeat' | 'produce' }
@@ -42,6 +45,8 @@ export type SessionSummary = {
   activities: number;
   averageScore: number;
   newWords: string[];
+  /** Reading-track characters introduced this session (kana, kanji). */
+  newCharacters: string[];
   reviewed: number;
   skills: Partial<Record<Skill, { count: number; avg: number }>>;
   unitAdvancedTo: string | null;

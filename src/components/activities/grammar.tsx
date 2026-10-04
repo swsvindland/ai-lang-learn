@@ -6,6 +6,7 @@ import { AudioButton } from '@/components/ui/controls';
 import { Icons } from '@/components/ui/icon';
 import { Input } from '@/components/ui/input';
 import { Card, Pill } from '@/components/ui/layout';
+import { TargetText } from '@/components/ui/target-text';
 import { Text } from '@/components/ui/text';
 import { Spacing } from '@/constants/theme';
 import { explainGrammar, type GrammarAnswer } from '@/lib/ai/tutor';
@@ -13,7 +14,7 @@ import { explainGrammar, type GrammarAnswer } from '@/lib/ai/tutor';
 import { ActivityShell, ContinueButton, type ActivityProps } from './shell';
 
 export function GrammarActivity({ activity, onDone, level, aiReady }: ActivityProps<'grammar'>) {
-  const { grammar, refresher } = activity;
+  const { grammar, refresher, reading } = activity;
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState<GrammarAnswer | null>(null);
   const [failed, setFailed] = useState(false);
@@ -36,23 +37,23 @@ export function GrammarActivity({ activity, onDone, level, aiReady }: ActivityPr
 
   return (
     <ActivityShell
-      kicker={refresher ? 'Grammar refresher' : 'Grammar'}
+      kicker={reading ? 'Learning to read' : refresher ? 'Grammar refresher' : 'Grammar'}
       icon={Icons.graduation}
       footer={<ContinueButton onPress={() => onDone({ skill: 'grammar', score: 1, ref: grammar.id, noAttempt: true })} />}>
       <Text variant="title">{grammar.title}</Text>
       <Text variant="body">{grammar.summary}</Text>
       <View style={styles.examples}>
         {grammar.examples.map((ex) => (
-          <Card key={ex.es} style={styles.example}>
+          <Card key={ex.text} style={styles.example}>
             <View style={styles.exampleText}>
-              <Text variant="bodyStrong">{ex.es}</Text>
+              <TargetText text={ex.text} reading={ex.reading} variant="bodyStrong" />
               <Text variant="caption">{ex.en}</Text>
             </View>
-            <AudioButton text={ex.es} size={40} showSlow={false} />
+            <AudioButton text={ex.text} size={40} showSlow={false} />
           </Card>
         ))}
       </View>
-      {aiReady ? (
+      {aiReady && !reading ? (
         <Card tone="surfaceAlt">
           <Pill label="Ask your tutor" tone="primary" />
           <Input
@@ -68,12 +69,12 @@ export function GrammarActivity({ activity, onDone, level, aiReady }: ActivityPr
             <View style={styles.answer}>
               <Text variant="body">{answer.answer}</Text>
               {answer.examples.map((ex) => (
-                <View key={ex.es} style={styles.answerExample}>
+                <View key={ex.text} style={styles.answerExample}>
                   <View style={styles.exampleText}>
-                    <Text variant="bodyStrong">{ex.es}</Text>
+                    <TargetText text={ex.text} reading={ex.reading} variant="bodyStrong" />
                     <Text variant="caption">{ex.en}</Text>
                   </View>
-                  <AudioButton text={ex.es} size={34} showSlow={false} />
+                  <AudioButton text={ex.text} size={34} showSlow={false} />
                 </View>
               ))}
               <Text variant="caption" color="textTertiary">

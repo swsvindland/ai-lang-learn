@@ -5,11 +5,13 @@ import { Button } from '@/components/ui/button';
 import { AudioButton } from '@/components/ui/controls';
 import { Icons } from '@/components/ui/icon';
 import { Card, Row } from '@/components/ui/layout';
+import { TargetText } from '@/components/ui/target-text';
 import { Text } from '@/components/ui/text';
 import { Spacing } from '@/constants/theme';
 import { vocabLabel } from '@/lib/cards';
-import { speakSpanish } from '@/lib/speech';
+import { speak } from '@/lib/speech';
 
+import { kanjiSpeech } from './kanji-details';
 import { ActivityShell, type ActivityProps } from './shell';
 
 type Phase = 'ask' | 'confirm' | 'learn';
@@ -21,19 +23,21 @@ type Phase = 'ask' | 'confirm' | 'learn';
  */
 export function QuickCheckActivity({ activity, onDone }: ActivityProps<'quick-check'>) {
   const { vocab } = activity;
-  const spanish = vocabLabel(vocab);
+  const label = vocabLabel(vocab);
   const [phase, setPhase] = useState<Phase>('ask');
 
+  const sound = vocab.kanji ? kanjiSpeech(vocab) : label;
+
   useEffect(() => {
-    speakSpanish(spanish);
-  }, [spanish]);
+    speak(sound);
+  }, [sound]);
 
   function finish(known: boolean) {
     onDone({
       skill: 'vocab',
       score: known ? 1 : 0,
       ref: vocab.id,
-      prompt: spanish,
+      prompt: label,
       expected: vocab.en,
       response: known ? 'known' : 'forgotten',
     });
@@ -59,18 +63,27 @@ export function QuickCheckActivity({ activity, onDone }: ActivityProps<'quick-ch
         )
       }>
       <Card style={styles.card}>
-        <Text variant="spanish" center style={styles.word}>
-          {spanish}
-        </Text>
-        <AudioButton text={spanish} size={48} />
+        <TargetText
+          text={label}
+          reading={vocab.reading}
+          center
+          style={styles.word}
+          // For a kana character the romaji *is* the answer.
+          aids={vocab.pos !== 'character' || phase !== 'ask'}
+        />
+        <AudioButton text={sound} size={48} />
         {phase !== 'ask' ? (
           <View style={styles.answer}>
             <Text variant="title" center>
               {vocab.en}
             </Text>
-            <Text variant="body" center color="textSecondary">
-              {vocab.example.es}
-            </Text>
+            <TargetText
+              text={vocab.example.text}
+              reading={vocab.example.reading}
+              variant="body"
+              color="textSecondary"
+              center
+            />
             <Text variant="caption" center>
               {vocab.example.en}
             </Text>

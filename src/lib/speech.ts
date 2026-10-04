@@ -1,33 +1,36 @@
 import * as Speech from 'expo-speech';
 
-let voiceId: string | undefined;
-let voiceLanguage = 'es-MX';
-let voiceLoaded: Promise<void> | null = null;
+import { language, type LanguageCode, type LanguageInfo } from '@/lib/languages';
 
-const PREFERRED_LOCALES = ['es-MX', 'es-US', 'es-419', 'es-CO', 'es-AR', 'es-ES'];
+type Voice = { id?: string; language: string };
 
-/** Picks the best installed Latin American Spanish voice, preferring enhanced quality. */
-function loadVoice() {
-  voiceLoaded ??= Speech.getAvailableVoicesAsync()
-    .then((voices) => {
-      const spanish = voices.filter((v) => v.language.toLowerCase().startsWith('es'));
-      const rank = (lang: string) => {
-        const i = PREFERRED_LOCALES.findIndex((l) => l.toLowerCase() === lang.toLowerCase().replace('_', '-'));
-        return i === -1 ? PREFERRED_LOCALES.length : i;
-      };
-      spanish.sort(
-        (a, b) =>
-          rank(a.language) - rank(b.language) ||
-          Number(b.quality === Speech.VoiceQuality.Enhanced) - Number(a.quality === Speech.VoiceQuality.Enhanced)
-      );
-      const best = spanish[0];
-      if (best) {
-        voiceId = best.identifier;
-        voiceLanguage = best.language.replace('_', '-');
-      }
-    })
-    .catch(() => undefined);
-  return voiceLoaded;
+const voices = new Map<LanguageCode, Promise<Voice>>();
+
+/** Picks the best installed voice for the language being learned, preferring enhanced quality. */
+function voiceFor(lang: LanguageInfo) {
+  let voice = voices.get(lang.code);
+  if (!voice) {
+    const fallback: Voice = { language: lang.speech.voiceLocales[0] };
+    voice = Speech.getAvailableVoicesAsync()
+      .then((all) => {
+        const matching = all.filter((v) => v.language.toLowerCase().startsWith(lang.speech.voicePrefix));
+        const preferred = lang.speech.voiceLocales.map((l) => l.toLowerCase());
+        const rank = (locale: string) => {
+          const i = preferred.indexOf(locale.toLowerCase().replace('_', '-'));
+          return i === -1 ? preferred.length : i;
+        };
+        matching.sort(
+          (a, b) =>
+            rank(a.language) - rank(b.language) ||
+            Number(b.quality === Speech.VoiceQuality.Enhanced) - Number(a.quality === Speech.VoiceQuality.Enhanced)
+        );
+        const best = matching[0];
+        return best ? { id: best.identifier, language: best.language.replace('_', '-') } : fallback;
+      })
+      .catch(() => fallback);
+    voices.set(lang.code, voice);
+  }
+  return voice;
 }
 
 export type SpeakOptions = { slow?: boolean; onDone?: () => void };
@@ -48,14 +51,16 @@ async function stopIfSpeaking() {
   if (await Speech.isSpeakingAsync()) await Speech.stop();
 }
 
-export function speakSpanish(text: string, { slow = false, onDone }: SpeakOptions = {}) {
+/** Speaks text in the language being learned. */
+export function speak(text: string, { slow = false, onDone }: SpeakOptions = {}) {
+  const lang = language();
   return enqueue(async () => {
-    await loadVoice();
+    const voice = await voiceFor(lang);
     await stopIfSpeaking();
     Speech.speak(text, {
-      language: voiceLanguage,
-      voice: voiceId,
-      rate: slow ? 0.7 : 0.95,
+      language: voice.language,
+      voice: voice.id,
+      rate: slow ? lang.speech.rate.slow : lang.speech.rate.normal,
       onDone,
       onStopped: onDone,
       onError: () => onDone?.(),
@@ -74,7 +79,6 @@ export function stopSpeaking() {
   return enqueue(stopIfSpeaking);
 }
 
-export async function spanishVoiceInfo() {
-  await loadVoice();
-  return { id: voiceId, language: voiceLanguage };
+export async function voiceInfo() {
+  return voiceFor(language());
 }

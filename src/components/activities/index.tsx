@@ -7,6 +7,7 @@ import { ConversationActivity } from './conversation';
 import { FlashcardActivity, IntroduceActivity } from './flashcard';
 import { GrammarActivity } from './grammar';
 import { QuickCheckActivity } from './quick-check';
+import { ReadWordActivity } from './read-word';
 import { ReadingActivity } from './reading';
 import { SpeakActivity } from './speak';
 import { DictationActivity, TranslateActivity } from './typing';
@@ -41,6 +42,8 @@ export function ActivityView(props: {
       return <ReadingActivity activity={activity} {...rest} />;
     case 'conversation':
       return <ConversationActivity activity={activity} {...rest} />;
+    case 'read-word':
+      return <ReadWordActivity activity={activity} {...rest} />;
     default:
       // Compile-time check that every activity kind has a view.
       return ((unhandled: never) => unhandled)(activity);

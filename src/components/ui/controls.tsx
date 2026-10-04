@@ -5,19 +5,19 @@ import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { getProfile } from '@/lib/learner';
-import { speakSpanish } from '@/lib/speech';
+import { speak } from '@/lib/speech';
 
 import { Icon, Icons } from './icon';
 import { Text } from './text';
 
-/** Round play button that speaks Spanish text, with an optional slow variant. */
+/** Round play button that speaks text in the language being learned, with an optional slow variant. */
 export function AudioButton({ text, size = 56, showSlow = true }: { text: string; size?: number; showSlow?: boolean }) {
   const theme = useTheme();
   const [playing, setPlaying] = useState<'normal' | 'slow' | null>(null);
 
   function play(slow: boolean) {
     setPlaying(slow ? 'slow' : 'normal');
-    speakSpanish(text, { slow: slow || !!getProfile()?.slowAudio, onDone: () => setPlaying(null) });
+    speak(text, { slow: slow || !!getProfile()?.slowAudio, onDone: () => setPlaying(null) });
   }
 
   return (
@@ -54,11 +54,14 @@ export type ChoiceState = 'idle' | 'selected' | 'correct' | 'incorrect' | 'dimme
 
 export function ChoiceOption({
   label,
+  hint,
   state,
   onPress,
   disabled,
 }: {
   label: string;
+  /** Small line under the label, e.g. romaji for a kana answer. */
+  hint?: string;
   state: ChoiceState;
   onPress: () => void;
   disabled?: boolean;
@@ -80,9 +83,12 @@ export function ChoiceOption({
         styles.choice,
         { backgroundColor: palette.bg, borderColor: palette.border, opacity: pressed ? 0.85 : 1 },
       ]}>
-      <Text variant="bodyStrong" style={{ color: palette.fg, flex: 1 }}>
-        {label}
-      </Text>
+      <View style={styles.choiceText}>
+        <Text variant="bodyStrong" style={{ color: palette.fg }}>
+          {label}
+        </Text>
+        {hint ? <Text variant="caption">{hint}</Text> : null}
+      </View>
       {state === 'correct' ? <Icon name={Icons.checkCircle} color="success" /> : null}
       {state === 'incorrect' ? <Icon name={Icons.xCircle} color="error" /> : null}
     </Pressable>
@@ -158,6 +164,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     minHeight: 54,
   },
+  choiceText: { flex: 1, gap: 2 },
   chip: {
     borderWidth: 1.5,
     borderRadius: Radius.pill,

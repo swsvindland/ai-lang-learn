@@ -1,7 +1,6 @@
 import { Button, FieldGroup, Host, Picker, Row, Spacer, Switch, Text } from '@expo/ui';
 import { background, scrollContentBackground } from '@expo/ui/swift-ui/modifiers';
 import { router } from 'expo-router';
-import { useState } from 'react';
 import { Alert, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -11,10 +10,24 @@ import { useAiStatus } from '@/hooks/use-ai-status';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useDbQuery } from '@/hooks/use-db-query';
 import { useTheme } from '@/hooks/use-theme';
-import { prepareModel } from '@/lib/ai/llm';
-import { resetAll } from '@/lib/db';
-import { getProfile, INTEREST_OPTIONS, updateProfile, type Interest, type Profile } from '@/lib/learner';
+import { resetCourse, selectCourse } from '@/lib/db';
+import { language, LANGUAGES, levelLabel, type LanguageCode } from '@/lib/languages';
+import {
+  courseSummaries,
+  getProfile,
+  INTEREST_OPTIONS,
+  updateProfile,
+  type AidMode,
+  type Interest,
+  type Profile,
+} from '@/lib/learner';
 import { syncReminders, WEEKDAYS } from '@/lib/reminders';
+
+const AID_OPTIONS: { value: AidMode; label: string }[] = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'always', label: 'Always' },
+  { value: 'off', label: 'Off' },
+];
 
 const TIMES = Array.from({ length: 34 }, (_, i) => {
   const minutes = 6 * 60 + i * 30;
@@ -37,7 +50,8 @@ function SettingsForm({ profile }: { profile: Profile }) {
   const theme = useTheme();
   const scheme = useColorScheme();
   const ai = useAiStatus();
-  const [preparing, setPreparing] = useState(false);
+  const courses = useDbQuery(courseSummaries);
+  const lang = language();
   const textColor = scheme === 'dark' ? '#F5F1EC' : '#1D1B19';
   const secondary = scheme === 'dark' ? '#A8A097' : '#6B645C';
 
@@ -62,26 +76,37 @@ function SettingsForm({ profile }: { profile: Profile }) {
     save({ interests: on ? [...profile.interests, value] : profile.interests.filter((i) => i !== value) });
   }
 
-  async function prepare() {
-    setPreparing(true);
-    try {
-      await prepareModel();
-    } catch (e) {
-      Alert.alert('Could not prepare the model', String(e));
-    } finally {
-      setPreparing(false);
-    }
+  function switchCourse(code: LanguageCode, started: boolean) {
+    const target = LANGUAGES[code];
+    Alert.alert(
+      started ? `Switch to ${target.name}?` : `Start learning ${target.name}?`,
+      started
+        ? 'Your progress in every language is kept.'
+        : `Your ${lang.name} progress is kept, and you can switch back any time from Settings.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: started ? 'Switch' : 'Start',
+          onPress: () => {
+            selectCourse(code);
+            // A started course reschedules its own reminders; a new one does it at the end of setup.
+            const next = getProfile();
+            if (next) syncReminders(next);
+          },
+        },
+      ]
+    );
   }
 
   const timeKey = `${profile.reminderHour}:${profile.reminderMinute}`;
   const aiLabel =
     ai?.status === 'available'
-      ? `Ready · ${ai.backend === 'apple' ? 'Apple Intelligence' : 'Gemini Nano'}`
+      ? `Ready · ${ai.label}`
       : ai?.status === 'downloadable'
         ? 'Needs download'
         : ai?.status === 'downloading'
           ? 'Downloading…'
-          : 'Unavailable';
+          : 'Off';
 
   return (
     <SafeAreaView edges={['top']} style={[styles.flex, { backgroundColor: theme.background }]}>
@@ -94,6 +119,30 @@ function SettingsForm({ profile }: { profile: Profile }) {
             // Let the app's warm background show through the SwiftUI form.
             Platform.OS === 'ios' ? [scrollContentBackground('hidden'), background(theme.background)] : undefined
           }>
+          <FieldGroup.Section title="Language">
+            <Row alignment="center">
+              <Text textStyle={{ color: textColor }}>{`${lang.flag}  ${lang.name}`}</Text>
+              <Spacer flexible />
+              <Text textStyle={{ color: secondary }}>
+                {levelLabel(courses.find((c) => c.code === lang.code)?.level ?? 'A1')}
+              </Text>
+            </Row>
+            {courses
+              .filter((c) => c.code !== lang.code)
+              .map((c) => (
+                <Button
+                  key={c.code}
+                  variant="text"
+                  label={
+                    c.started
+                      ? `Switch to ${LANGUAGES[c.code].name} ${LANGUAGES[c.code].flag} (${LANGUAGES[c.code].levelLabels[c.level]})`
+                      : `Start learning ${LANGUAGES[c.code].name} ${LANGUAGES[c.code].flag}`
+                  }
+                  onPress={() => switchCourse(c.code, c.started)}
+                />
+              ))}
+          </FieldGroup.Section>
+
           <FieldGroup.Section title="Study plan">
             <Row alignment="center">
               <Text textStyle={{ color: textColor }}>Sessions per week</Text>
@@ -113,8 +162,39 @@ function SettingsForm({ profile }: { profile: Profile }) {
                 ))}
               </Picker>
             </Row>
-            <Switch label="Slower Spanish audio" value={profile.slowAudio} onValueChange={(v) => save({ slowAudio: v })} />
+            <Switch
+              label={`Slower ${lang.name} audio`}
+              value={profile.slowAudio}
+              onValueChange={(v) => save({ slowAudio: v })}
+            />
           </FieldGroup.Section>
+
+          {lang.readings ? (
+            <FieldGroup.Section title="Reading aids">
+              <Row alignment="center">
+                <Text textStyle={{ color: textColor }}>Furigana over kanji</Text>
+                <Spacer flexible />
+                <Picker selectedValue={profile.furigana} onValueChange={(v: AidMode) => save({ furigana: v })}>
+                  {AID_OPTIONS.map((o) => (
+                    <Picker.Item key={o.value} label={o.label} value={o.value} />
+                  ))}
+                </Picker>
+              </Row>
+              <Row alignment="center">
+                <Text textStyle={{ color: textColor }}>Romaji under words</Text>
+                <Spacer flexible />
+                <Picker selectedValue={profile.romaji} onValueChange={(v: AidMode) => save({ romaji: v })}>
+                  {AID_OPTIONS.map((o) => (
+                    <Picker.Item key={o.value} label={o.label} value={o.value} />
+                  ))}
+                </Picker>
+              </Row>
+              <Text textStyle={{ color: secondary, fontSize: 13 }}>
+                Auto shows romaji under a word until you know all its kana, and furigana over a kanji until you know
+                it, so the help fades as you learn to read.
+              </Text>
+            </FieldGroup.Section>
+          ) : null}
 
           <FieldGroup.Section title="Reminders">
             <Switch
@@ -157,20 +237,21 @@ function SettingsForm({ profile }: { profile: Profile }) {
             ))}
           </FieldGroup.Section>
 
-          <FieldGroup.Section title="On-device AI">
+          <FieldGroup.Section title="AI tutor">
             <Row alignment="center">
-              <Text textStyle={{ color: textColor }}>Tutor model</Text>
+              <Text textStyle={{ color: textColor }}>Tutor</Text>
               <Spacer flexible />
               <Text textStyle={{ color: secondary }}>{aiLabel}</Text>
             </Row>
             {ai?.reason && ai.status !== 'available' ? (
               <Text textStyle={{ color: secondary, fontSize: 13 }}>{ai.reason}</Text>
             ) : null}
-            {ai && ai.status !== 'available' && ai.backend !== 'none' ? (
-              <Button label={preparing ? 'Preparing…' : 'Download / prepare model'} onPress={prepare} disabled={preparing} />
-            ) : null}
+            {ai?.notice ? <Text textStyle={{ color: secondary, fontSize: 13 }}>{ai.notice}</Text> : null}
+            <Button label="Choose AI tutor…" variant="text" onPress={() => router.push('/ai')} />
             <Text textStyle={{ color: secondary, fontSize: 13 }}>
-              Everything runs on this device. Your answers, recordings, and progress never leave your phone.
+              {ai?.cloud
+                ? 'Tutor requests (your answers and messages) are sent to the cloud model. Recordings and progress stay on this phone.'
+                : 'Everything runs on this device. Your answers, recordings, and progress never leave your phone.'}
             </Text>
           </FieldGroup.Section>
 
@@ -180,15 +261,28 @@ function SettingsForm({ profile }: { profile: Profile }) {
             </FieldGroup.Section>
           ) : null}
 
+          {lang.readings ? (
+            <FieldGroup.Section title="Credits">
+              <Text textStyle={{ color: secondary, fontSize: 13 }}>
+                Kanji meanings and readings: KANJIDIC, © Electronic Dictionary Research and Development Group, CC
+                BY-SA 4.0. JLPT kanji lists: Jonathan Waller (tanos.co.uk).
+              </Text>
+            </FieldGroup.Section>
+          ) : null}
+
           <FieldGroup.Section title="Data">
             <Button
-              label="Reset progress & retake placement"
+              label={`Reset ${lang.name} progress & retake placement`}
               variant="text"
               onPress={() =>
-                Alert.alert('Start over?', 'This deletes your progress, cards, sessions, and homework, then runs setup and the placement check again.', [
-                  { text: 'Cancel', style: 'cancel' },
-                  { text: 'Reset', style: 'destructive', onPress: () => resetAll() },
-                ])
+                Alert.alert(
+                  'Start over?',
+                  `This deletes your ${lang.name} progress, cards, sessions, and homework, then runs setup and the placement check again. Other languages are not affected.`,
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Reset', style: 'destructive', onPress: () => resetCourse() },
+                  ]
+                )
               }
             />
           </FieldGroup.Section>

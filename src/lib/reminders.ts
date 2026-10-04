@@ -1,6 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
+import { language } from '@/lib/languages';
 import type { Profile } from '@/lib/learner';
 
 const CHANNEL = 'study-reminders';
@@ -43,8 +44,8 @@ export async function syncReminders(profile: Profile): Promise<boolean> {
   for (const weekday of profile.reminderDays) {
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: '¡Hora de estudiar!',
-        body: `Your ${profile.sessionMinutes}-minute Spanish session is ready.`,
+        title: language().phrases.studyTime,
+        body: `Your ${profile.sessionMinutes}-minute ${language().name} session is ready.`,
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.WEEKLY,

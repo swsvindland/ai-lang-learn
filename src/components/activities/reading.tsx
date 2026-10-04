@@ -4,6 +4,7 @@ import { StyleSheet, View } from 'react-native';
 import { AudioButton, ChoiceOption, haptic } from '@/components/ui/controls';
 import { Icons } from '@/components/ui/icon';
 import { Card } from '@/components/ui/layout';
+import { TargetText } from '@/components/ui/target-text';
 import { Text } from '@/components/ui/text';
 import { Spacing } from '@/constants/theme';
 
@@ -34,9 +35,13 @@ export function ReadingActivity({ activity, onDone }: ActivityProps<'reading'>) 
       }>
       <Card style={styles.passage}>
         <Text variant="heading">{passage.title}</Text>
-        <Text variant="body" style={styles.text} selectable>
-          {passage.text}
-        </Text>
+        {passage.reading ? (
+          <TargetText text={passage.text} reading={passage.reading} variant="body" style={styles.text} />
+        ) : (
+          <Text variant="body" style={styles.text} selectable>
+            {passage.text}
+          </Text>
+        )}
         <AudioButton text={passage.text} size={44} />
       </Card>
       {passage.questions.map((q, qi) => (

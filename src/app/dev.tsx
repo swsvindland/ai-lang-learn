@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ActivityView } from '@/components/activities';
@@ -8,42 +8,43 @@ import { Text } from '@/components/ui/text';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAiStatus } from '@/hooks/use-ai-status';
 import { generatePracticeSentences, generateReading } from '@/lib/ai/tutor';
-import { newCard } from '@/lib/srs';
-import { units } from '@/lib/curriculum';
+import type { Unit } from '@/lib/curriculum';
+import { currentUnit } from '@/lib/learner';
 import type { Activity } from '@/lib/session/types';
+import { newCard } from '@/lib/srs';
 
-const unit = units[0];
-const vocab = unit.vocab[0];
-const grammar = unit.grammar[0];
-const sentence = grammar.examples[0];
-
-const STATIC: Record<string, Activity> = {
-  flashcard: {
-    kind: 'flashcard',
-    card: { ...newCard(), id: 'dev', vocab_id: vocab.id, direction: 'es_en' },
-    vocab,
-    difficulty: 10,
-  },
-  introduce: { kind: 'introduce', vocab, difficulty: 10 },
-  grammar: { kind: 'grammar', grammar, refresher: false },
-  cloze: {
-    kind: 'cloze',
-    drill: grammar.drills[0],
-    grammarId: grammar.id,
-    options: [grammar.drills[0].answer, ...grammar.drills[0].distractors],
-  },
-  listen: {
-    kind: 'listen-choice',
-    sentence,
-    options: grammar.examples.map((e) => e.en),
-    answerIndex: 0,
-  },
-  dictation: { kind: 'dictation', sentence },
-  speak: { kind: 'speak', sentence, mode: 'repeat' },
-  produce: { kind: 'speak', sentence, mode: 'produce' },
-  translate: { kind: 'translate', sentence },
-  conversation: { kind: 'conversation', scenario: unit.scenario, unit },
-};
+function staticActivities(unit: Unit): Record<string, Activity> {
+  const vocab = unit.vocab[0];
+  const grammar = unit.grammar[0];
+  const sentence = grammar.examples[0];
+  return {
+    flashcard: {
+      kind: 'flashcard',
+      card: { ...newCard(), id: 'dev', vocab_id: vocab.id, direction: 'es_en' },
+      vocab,
+      difficulty: 10,
+    },
+    introduce: { kind: 'introduce', vocab, difficulty: 10 },
+    grammar: { kind: 'grammar', grammar, refresher: false },
+    cloze: {
+      kind: 'cloze',
+      drill: grammar.drills[0],
+      grammarId: grammar.id,
+      options: [grammar.drills[0].answer, ...grammar.drills[0].distractors],
+    },
+    listen: {
+      kind: 'listen-choice',
+      sentence,
+      options: grammar.examples.map((e) => e.en),
+      answerIndex: 0,
+    },
+    dictation: { kind: 'dictation', sentence },
+    speak: { kind: 'speak', sentence, mode: 'repeat' },
+    produce: { kind: 'speak', sentence, mode: 'produce' },
+    translate: { kind: 'translate', sentence },
+    conversation: { kind: 'conversation', scenario: unit.scenario, unit },
+  };
+}
 
 /** Dev-only gallery for exercising each activity type without a full session. */
 export default function DevGallery() {
@@ -52,6 +53,10 @@ export default function DevGallery() {
   const [log, setLog] = useState('');
   const [busy, setBusy] = useState(false);
   const aiReady = useAiStatus()?.status === 'available';
+  // The learner's current unit, so the gallery shows the language being studied.
+  const unit = useMemo(() => currentUnit(), []);
+  const grammar = unit.grammar[0];
+  const STATIC = useMemo(() => staticActivities(unit), [unit]);
 
   function show(a: Activity) {
     setActivity(a);
@@ -74,7 +79,7 @@ export default function DevGallery() {
     setBusy(true);
     try {
       const s = await generatePracticeSentences({ level: 'A1', grammar, words: unit.vocab.slice(0, 10), count: 4 });
-      setLog(s.map((x) => `${x.es} — ${x.en}`).join('\n'));
+      setLog(s.map((x) => `${x.text}${x.reading ? ` (${x.reading})` : ''} — ${x.en}`).join('\n'));
       show({ kind: 'translate', sentence: s[0] });
     } catch (e) {
       setLog(String(e));

@@ -1,16 +1,17 @@
 import {
   CEFR_LEVELS,
+  courseUnits,
   LEVEL_SPAN,
   ratingProgress,
   ratingToCefr,
-  units,
   type Cefr,
   type Sentence,
   type Unit,
   type VocabItem,
 } from '@/lib/curriculum';
+import { levelLabel } from '@/lib/languages';
 import type { Skill } from '@/lib/learner';
-import { charSimilarity, normalize, sample, shuffle } from '@/lib/text';
+import { charSimilarity, normalize, sample, sentenceLength, shuffle } from '@/lib/text';
 
 export type Background = 'none' | 'little' | 'school' | 'lots' | 'heritage';
 export type LastUsed = 'recent' | 'years' | 'long';
@@ -19,7 +20,7 @@ export const BACKGROUND_OPTIONS: { value: Background; label: string; detail: str
   { value: 'none', label: 'Never studied it', detail: 'Starting from zero' },
   { value: 'little', label: 'A little', detail: 'An app, a short course, or travel phrases' },
   { value: 'school', label: 'Classes in school', detail: 'High school or college, 1–3 years' },
-  { value: 'lots', label: 'A lot', detail: '4+ years, a major, or lived somewhere Spanish-speaking' },
+  { value: 'lots', label: 'A lot', detail: '4+ years, a major, or lived somewhere it’s spoken' },
   { value: 'heritage', label: 'Grew up around it', detail: 'Heard or spoke it at home' },
 ];
 
@@ -49,7 +50,7 @@ const VOCAB_PLAN: [Cefr, number][] = [
 
 const TESTABLE_POS = new Set(['noun', 'verb', 'adjective', 'adverb']);
 
-/** Glosses sometimes carry usage hints that contain the Spanish word itself; drop them. */
+/** Glosses sometimes carry usage hints that contain the target word itself; drop them. */
 function gloss(en: string) {
   return en.replace(/\s*\([^)]*\)/g, '').trim();
 }
@@ -57,12 +58,12 @@ function gloss(en: string) {
 export function buildVocabQuestions(): VocabQuestion[] {
   const questions: VocabQuestion[] = [];
   for (const [level, count] of VOCAB_PLAN) {
-    const pool = units
+    const pool = courseUnits()
       .filter((u) => u.cefr === level)
       .flatMap((u) => u.vocab)
-      .filter((v) => TESTABLE_POS.has(v.pos) && !v.es.includes(' '));
+      .filter((v) => TESTABLE_POS.has(v.pos) && !v.text.includes(' '));
     // Near-identical cognates (hospital → hospital) say nothing about what you know.
-    const informative = pool.filter((v) => charSimilarity(normalize(v.es), normalize(gloss(v.en))) < 0.7);
+    const informative = pool.filter((v) => charSimilarity(normalize(v.text), normalize(gloss(v.en))) < 0.7);
     for (const vocab of sample(informative, count)) {
       // Distractors of the same part of speech so the answer can't be guessed by shape.
       const answer = gloss(vocab.en);
@@ -96,10 +97,10 @@ const LISTENING_PLAN: [Cefr, number][] = [
 export function buildListeningQuestions(): ListeningQuestion[] {
   const questions: ListeningQuestion[] = [];
   for (const [level, count] of LISTENING_PLAN) {
-    const pool = units
+    const pool = courseUnits()
       .filter((u) => u.cefr === level)
       .flatMap((u) => u.grammar.flatMap((g) => g.examples))
-      .filter((s) => s.es.split(' ').length >= 4);
+      .filter((s) => sentenceLength(s) >= 4);
     for (const sentence of sample(pool, count)) {
       const distractors = sample(
         pool.filter((s) => s.en !== sentence.en),
@@ -157,7 +158,9 @@ export function estimateWordsKnown(bands: BandTally): number {
     const n = t.correct + t.wrong + t.skipped;
     if (!n) continue;
     const known = Math.max(0, (t.correct - t.wrong / 3) / n);
-    const bandWords = units.filter((u) => u.cefr === level).reduce((s, u) => s + u.vocab.length, 0);
+    const bandWords = courseUnits()
+      .filter((u) => u.cefr === level && u.vocab.some((v) => v.pos !== 'character'))
+      .reduce((s, u) => s + u.vocab.filter((v) => v.pos !== 'character').length, 0);
     total += known * bandWords;
   }
   return Math.round(total / 10) * 10;
@@ -184,6 +187,7 @@ export type PlacementPlan = {
 
 /** The first unit at or beyond a rating, e.g. 150 → the middle of A2. */
 export function unitForRating(rating: number): Unit {
+  const units = courseUnits();
   const level = ratingToCefr(rating);
   const peers = units.filter((u) => u.cefr === level);
   if (!peers.length) return units[units.length - 1];
@@ -202,7 +206,7 @@ export function planFromPlacement(r: PlacementResult): PlacementPlan {
   // sessions already lean toward the weakest skill, so it shouldn't block progress.
   const start = Math.max(0, Math.min(r.grammar, r.vocab + 30, r.listening + 100));
   const startUnit = unitForRating(start);
-  const skippedUnits = units.filter((u) => u.order < startUnit.order);
+  const skippedUnits = courseUnits().filter((u) => u.order < startUnit.order);
   const refreshWords = skippedUnits.reduce((s, u) => s + u.vocab.length, 0);
   const production = Math.min(r.vocab, r.grammar);
   const skills: Record<Skill, number> = {
@@ -221,7 +225,7 @@ export function planFromPlacement(r: PlacementResult): PlacementPlan {
   if (r.background === 'none' || start < 15) {
     headline = 'Starting from the beginning';
     explanation =
-      "You'll build from greetings and the verb ser. Sessions mix new words, grammar, listening and speaking from day one.";
+      `You'll build up from "${startUnit.title}". Sessions mix new words, grammar, listening and speaking from day one.`;
   } else if (gap >= 40) {
     headline = 'Returning learner: grammar is ahead of vocabulary';
     explanation = `You still recognize a lot of the grammar, but many words have faded. That's normal after a break. You'll start at "${startUnit.title}", and your first sessions include a fast refresh of the ${refreshWords} words from earlier units: the ones you still know get scheduled far out, and the ones you've forgotten get relearned.`;
@@ -231,7 +235,7 @@ export function planFromPlacement(r: PlacementResult): PlacementPlan {
       refreshWords ? ` Earlier words (${refreshWords}) get a quick refresh along the way.` : ''
     }`;
   } else {
-    headline = `Starting in ${startUnit.cefr}`;
+    headline = `Starting in ${levelLabel(startUnit.cefr)}`;
     explanation = `You'll start at "${startUnit.title}".${
       refreshWords ? ` Your first sessions include a quick refresh of the ${refreshWords} words from earlier units.` : ''
     } The app keeps adjusting to how you actually do.`;
